@@ -1,41 +1,41 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-admin';
-import { randomUUID } from 'crypto';
 
 export const runtime = 'edge';
 export const maxDuration = 60; // 60秒
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
 
     if (!file) {
       return NextResponse.json(
-        { error: 'ファイルがアップロードされていません' },
+        { success: false, error: 'ファイルが提供されていません' },
         { status: 400 }
       );
     }
 
-    // ファイルタイプの検証
+    // 画像ファイルかどうかを確認
     if (!file.type.startsWith('image/')) {
       return NextResponse.json(
-        { error: '画像ファイルのみアップロード可能です' },
+        { success: false, error: '画像ファイルのみアップロードできます' },
         { status: 400 }
       );
     }
 
-    // ファイルサイズの検証（5MB以下）
-    if (file.size > 5 * 1024 * 1024) {
+    // ファイルサイズの制限（10MB）
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: 'ファイルサイズは5MB以下にしてください' },
+        { success: false, error: 'ファイルサイズは10MB以下にしてください' },
         { status: 400 }
       );
     }
 
     // ファイル名の生成（一意のIDを使用）
     const fileExt = file.name.split('.').pop();
-    const fileName = `${randomUUID()}.${fileExt}`;
+    const fileName = `${crypto.randomUUID()}.${fileExt}`;
     const filePath = `public/images/${fileName}`;
 
     // ファイルをArrayBufferに変換
@@ -74,4 +74,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-} 
+}

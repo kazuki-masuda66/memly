@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-admin';
+// import { randomUUID } from 'crypto'; // 削除
 import { v4 as uuidv4 } from 'uuid';
 
 // リクエストの型定義

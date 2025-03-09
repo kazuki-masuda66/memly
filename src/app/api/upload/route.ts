@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { writeFile } from 'fs/promises';
-import { randomUUID } from 'crypto';
 import { unlink } from 'fs/promises';
 import { mkdir } from 'fs/promises';
+import crypto from 'crypto';
 
 // NodeJSランタイムを明示的に指定
 export const runtime = 'nodejs';
+export const maxDuration = 60; // 60秒
 
 // 一時ディレクトリのパス設定
 const TEMP_DIR = process.env.TEMP_DIR || './tmp';
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(bytes);
     
     // 一時ファイル名を生成
-    const tempFileName = path.join(TEMP_DIR, `${randomUUID()}${path.extname(file.name)}`);
+    const tempFileName = path.join(TEMP_DIR, `${crypto.randomUUID()}${path.extname(file.name)}`);
     
     try {
       // ファイルを一時ディレクトリに保存
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
             
             console.log('pdf-parseでPDFを処理中...');
             
-            const scriptPath = path.join(TEMP_DIR, `${randomUUID()}.js`);
+            const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
             const scriptContent = `
               const fs = require('fs');
               const pdfParse = require('pdf-parse');
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
             const util = require('util');
             const execPromise = util.promisify(exec);
             
-            const scriptPath = path.join(TEMP_DIR, `${randomUUID()}.js`);
+            const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
             const scriptContent = `
               const PDFExtract = require('pdf.js-extract').PDFExtract;
               const pdfExtract = new PDFExtract();
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest) {
           const execPromise = util.promisify(exec);
           
           // Node.jsスクリプトを作成して実行
-          const scriptPath = path.join(TEMP_DIR, `${randomUUID()}.js`);
+          const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
           const scriptContent = `
             const mammoth = require('mammoth');
             
