@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -15,7 +15,8 @@ interface Deck {
   updated_at: string;
 }
 
-export default function StudyPage() {
+// SearchParamsを取得するコンポーネント
+function StudyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const deckIdFromUrl = searchParams.get('deckId');
@@ -273,5 +274,19 @@ export default function StudyPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+// メインコンポーネント
+export default function StudyPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
+        <p className="text-lg">読み込み中...</p>
+      </div>
+    }>
+      <StudyContent />
+    </Suspense>
   );
 } 
