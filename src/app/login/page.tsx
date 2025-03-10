@@ -22,14 +22,17 @@ export default function LoginPage() {
   }, [user, router]);
 
   // メールとパスワードでログイン
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
+  const handleLogin = async () => {
     setLoading(true);
+    setErrorMessage(null);
 
     try {
-      const { error } = await signIn(email, password);
+      // 現在のホスト名を取得
+      const currentHost = window.location.origin;
       
+      // 既存のsignIn関数を使用して、callbackUrlを設定
+      const { error } = await signIn(email, password, currentHost);
+
       if (error) {
         let message = 'ログインに失敗しました';
         if (error.message.includes('Invalid login credentials')) {
@@ -39,8 +42,8 @@ export default function LoginPage() {
         return;
       }
       
-      // ログイン成功時
-      router.push('/flashcards');
+      // ログイン成功時の処理はsignIn内部で行われるため、
+      // 明示的なリダイレクトは不要
     } catch (error: any) {
       setErrorMessage(error.message || 'ログイン中にエラーが発生しました');
     } finally {
@@ -66,6 +69,12 @@ export default function LoginPage() {
       setErrorMessage(error.message || 'ログイン中にエラーが発生しました');
       setLoading(false);
     }
+  };
+
+  // フォームのonSubmitハンドラを修正
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    await handleLogin();
   };
 
   return (

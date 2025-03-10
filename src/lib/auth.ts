@@ -29,13 +29,37 @@ export async function signUp(email: string, password: string) {
 }
 
 // サインイン（ログイン）
-export async function signIn(email: string, password: string) {
-  const { data, error } = await supabaseAuth.auth.signInWithPassword({
-    email,
-    password,
-  });
-  
-  return { data, error };
+export async function signIn(email: string, password: string, callbackUrl?: string) {
+  try {
+    // 入力検証
+    if (!email || !password) {
+      return { error: { message: 'メールアドレスとパスワードを入力してください' } };
+    }
+
+    // Supabaseでサインイン
+    const { data, error } = await supabaseAuth.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      console.error('サインインエラー:', error);
+      return { error };
+    }
+
+    // サインイン成功後、指定されたURLにリダイレクト
+    if (callbackUrl) {
+      window.location.href = callbackUrl;
+    } else {
+      // デフォルトのリダイレクト先
+      window.location.href = '/flashcards';
+    }
+
+    return { data };
+  } catch (error) {
+    console.error('サインイン例外:', error);
+    return { error: { message: 'サインイン中に予期しないエラーが発生しました' } };
+  }
 }
 
 // Google認証でサインイン
