@@ -167,10 +167,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
       
+      // 現在のホスト名を取得（開発環境とVercel環境の両方で動作するように）
+      const redirectUrl = typeof window !== 'undefined' 
+        ? `${window.location.origin}/auth/callback` 
+        : process.env.NEXT_PUBLIC_SITE_URL 
+          ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+          : `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : window.location.origin}/auth/callback`;
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: redirectUrl
         }
       });
       

@@ -18,5 +18,6 @@ export async function GET(request: Request) {
   }
 
   // ユーザーをフラッシュカードページにリダイレクト
-  return NextResponse.redirect(new URL('/flashcards', request.url));
+  const origin = new URL(request.url).origin;
+  return NextResponse.redirect(`${origin}/flashcards`);
 } 
