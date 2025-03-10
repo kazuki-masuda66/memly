@@ -167,12 +167,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
       
-      // 現在のホスト名を取得（開発環境とVercel環境の両方で動作するように）
-      const redirectUrl = typeof window !== 'undefined' 
-        ? `${window.location.origin}/auth/callback` 
-        : process.env.NEXT_PUBLIC_SITE_URL 
-          ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
-          : `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : window.location.origin}/auth/callback`;
+      // Next.jsのクライアントコンポーネントでは、window.locationは常に利用可能
+      // しかし、TypeScriptの型チェックのためにより明示的なアプローチを使用
+      let redirectUrl = '/auth/callback';
+      
+      // 絶対URLが必要な場合は、現在のオリジンを追加
+      if (typeof window !== 'undefined') {
+        redirectUrl = `${window.location.origin}${redirectUrl}`;
+      }
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
