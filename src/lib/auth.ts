@@ -64,10 +64,21 @@ export async function signIn(email: string, password: string, callbackUrl?: stri
 
 // Google認証でサインイン
 export async function signInWithGoogle() {
+  // リダイレクトURLの構築（開発・本番環境の両方で動作するように）
+  let redirectUrl = '/auth/callback';
+  
+  // ブラウザ環境では絶対URLを構築
+  // これはクライアントサイドでのみ実行される
+  if (typeof window !== 'undefined') {
+    // window.location.originが"localhost"を含む場合は開発環境
+    // Vercelなどの本番環境では実際のドメインが使用される
+    redirectUrl = `${window.location.origin}${redirectUrl}`;
+  }
+  
   const { data, error } = await supabaseAuth.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
+      redirectTo: redirectUrl,
     },
   });
   
