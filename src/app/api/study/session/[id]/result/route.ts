@@ -15,6 +15,15 @@ interface StudyLog {
   };
 }
 
+// 型定義を追加
+interface Flashcard {
+  id: string | number;
+  front: string;
+  back: string;
+  front_rich?: string;
+  back_rich?: string;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -97,13 +106,15 @@ export async function GET(
     const accuracy = logsData.length > 0 ? correctCount / logsData.length : 0;
     
     // カード別の結果を整形
-    const cardStats = logsData.map(log => ({
-      cardId: log.card_id,
-      question: log.flashcards ? log.flashcards.front : '',
-      answer: log.flashcards ? log.flashcards.back : '',
-      isCorrect: log.correct,
-      timeTaken: log.time_taken || 0,
-    }));
+    const cardStats = logsData.map(log => {
+      return {
+        cardId: log.card_id,
+        question: log.flashcards ? (log.flashcards as any).front || '' : '',
+        answer: log.flashcards ? (log.flashcards as any).back || '' : '',
+        isCorrect: log.correct,
+        timeTaken: log.time_taken || 0,
+      };
+    });
     
     // 結果オブジェクトを作成
     const result = {
