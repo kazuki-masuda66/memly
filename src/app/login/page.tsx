@@ -31,7 +31,7 @@ export default function LoginPage() {
       const currentHost = window.location.origin;
       
       // 既存のsignIn関数を使用して、callbackUrlを設定
-      const { error } = await signIn(email, password, currentHost);
+      const { error } = await signIn(email, password);
 
       if (error) {
         let message = 'ログインに失敗しました';
@@ -42,8 +42,8 @@ export default function LoginPage() {
         return;
       }
       
-      // ログイン成功時の処理はsignIn内部で行われるため、
-      // 明示的なリダイレクトは不要
+      // ログイン成功時に明示的にリダイレクト
+      window.location.href = currentHost + '/flashcards';
     } catch (error: any) {
       setErrorMessage(error.message || 'ログイン中にエラーが発生しました');
     } finally {
