@@ -661,7 +661,7 @@ export default function FlashcardsPage() {
       if (!response.ok) {
         throw new Error(data.error || 'デッキの作成に失敗しました');
       }
-      
+
       // デッキリストを更新
       await fetchDecks();
       
@@ -862,28 +862,56 @@ export default function FlashcardsPage() {
 
         <div className="border-t pt-4 pb-2">
           <h3 className="font-medium mb-3">または、ファイルをアップロード</h3>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".pdf,.doc,.docx"
-              className="border p-2 rounded-md flex-1"
-            />
-            <button
-              type="button"
-              onClick={handleFileUpload}
-              disabled={!selectedFile || uploadLoading}
-              className={`px-4 py-2 bg-gray-600 text-white rounded-md ${
-                !selectedFile || uploadLoading ? 'opacity-70 cursor-not-allowed' : 'hover:bg-gray-700'
-              }`}
-            >
-              {uploadLoading ? '処理中...' : 'アップロード'}
-            </button>
+          <div className="flex flex-col space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".pdf,.doc,.docx,.mp3,.wav,.m4a,.mp4,.aac,.ogg,.webm,.flac,.jpg,.jpeg,.png,.gif,.webp"
+                className="border p-2 rounded-md flex-1"
+              />
+              <button
+                type="button"
+                onClick={handleFileUpload}
+                disabled={!selectedFile || uploadLoading}
+                className={`px-4 py-2 bg-gray-600 text-white rounded-md ${
+                  !selectedFile || uploadLoading ? 'opacity-70 cursor-not-allowed' : 'hover:bg-gray-700'
+                }`}
+              >
+                {uploadLoading ? (
+                  <>
+                    <span className="inline-block animate-spin mr-2">⟳</span>
+                    処理中...
+                  </>
+                ) : (
+                  'アップロード'
+                )}
+              </button>
+            </div>
+            
+            {selectedFile && (
+              <div className="mt-2">
+                <span className="text-sm text-gray-600">
+                  選択されたファイル: {selectedFile.name}
+                </span>
+              </div>
+            )}
+            
+            <p className="text-sm text-gray-500 mt-1">
+              PDFやWord文書は内容が抽出され、音声ファイルは文字起こし、画像ファイルはテキスト認識されます
+            </p>
+            
+            <div className="mt-2 bg-blue-50 p-3 rounded-md">
+              <h3 className="text-sm font-semibold text-blue-800">✨ 新機能：Google Gemini 1.5 Proによる高精度音声・画像認識</h3>
+              <p className="text-sm text-blue-600 mt-1">
+                音声ファイルや画像ファイルをアップロードすれば、Googleの最新AI技術により高精度でテキスト化されて学習カードが作成できます！
+              </p>
+              <p className="text-xs text-blue-500 mt-1">
+                複数言語対応、正確な句読点配置、表・図形内テキスト認識など高度な機能を備えています。
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-gray-500 mt-1">
-            サポートされているファイル形式: PDF、Word文書
-          </p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

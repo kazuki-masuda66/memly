@@ -7,6 +7,10 @@ Vercel AI SDKを使用したAPIサーバーです。モバイルアプリとWeb�
 - Vercel AI SDKによるAIストリーミングレスポンス
 - Edge Functionsによる高速なレスポンス
 - モバイル／Webアプリからアクセス可能なAPI
+- PDF・Word文書の内容抽出
+- YouTube字幕の取得と処理
+- 音声ファイルの自動文字起こし機能
+- 画像内テキスト抽出機能 (New!)
 
 ## セットアップ
 
@@ -23,9 +27,11 @@ npm run dev
 `.env.local.example`ファイルを`.env.local`にコピーして、必要な環境変数を設定してください。
 
 ```
-OPENAI_API_KEY=your_openai_api_key_here
+GOOGLE_API_KEY=your_google_api_key_here
 YOUTUBE_API_KEY=your_youtube_api_key_here
 ```
+
+音声文字起こし機能を使用するには、Google APIキーが必須です。詳細は `audio-transcription-setup.md` を参照してください。
 
 ## API エンドポイント
 
@@ -119,6 +125,33 @@ YouTubeの動画情報を取得するエンドポイントです。
 }
 ```
 
+### `/api/upload`
+
+PDFファイル、Word文書、または音声ファイルをアップロードして内容を抽出するエンドポイントです。
+
+**リクエスト形式:**
+- Content-Type: multipart/form-data
+- フォームフィールド名: `file`
+
+**サポートするファイル形式:**
+- PDF (`.pdf`)
+- Word文書 (`.doc`, `.docx`)
+- 音声ファイル (`.mp3`, `.wav`, `.m4a`, `.mp4`(音声), `.aac`, `.ogg`, `.webm`, `.flac`)
+- 画像ファイル (`.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`)
+
+**レスポンス例:**
+
+```json
+{
+  "text": "ファイルから抽出された内容のテキスト..."
+}
+```
+
+**注意事項:**
+- 音声ファイルの処理には、環境変数 `GOOGLE_API_KEY` が設定されている必要があります
+- 音声ファイルは25MB以下である必要があります
+- 処理時間は音声の長さや複雑さによって異なります
+
 ## デモページ
 
 プロジェクトには以下のデモページが含まれています：
@@ -135,4 +168,3 @@ npm run build
 
 # Vercelへのデプロイ
 vercel --prod
-``` 
