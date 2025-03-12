@@ -14,6 +14,14 @@ const nextConfig = {
   },
   // 本番環境でのサーバーサイドコードの処理方法を指定
   output: 'standalone',
+  // Vercel環境でのnpmパッケージの扱いを設定
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // サーバーサイドでのみ必要なパッケージをバンドルに含める
+      config.externals = [...config.externals, 'canvas', 'jsdom'];
+    }
+    return config;
+  },
 };
 
 module.exports = nextConfig;

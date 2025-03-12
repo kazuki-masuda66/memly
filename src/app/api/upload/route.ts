@@ -8,7 +8,7 @@ import crypto from 'crypto';
 
 // NodeJSランタイムを明示的に指定
 export const runtime = 'nodejs';
-export const maxDuration = 120; // 120秒に拡張（音声処理は時間がかかる可能性がある）
+export const maxDuration = 60; // 60秒
 
 // 一時ディレクトリのパス設定
 const TEMP_DIR = process.env.TEMP_DIR || './tmp';
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
               const PDFExtract = require('pdf.js-extract').PDFExtract;
               const pdfExtract = new PDFExtract();
               
-              pdfExtract.extractRawText({ path: '${tempFileName.replace(/\\/g, '\\\\')}' })
+              pdfExtract.extract('${tempFileName.replace(/\\/g, '\\\\')}', {})
                 .then(data => {
                   // ページごとのテキストを連結
                   let allText = '';
@@ -237,103 +237,10 @@ export async function POST(req: NextRequest) {
             { status: 500 }
           );
         }
-      } else if (
-        fileType.startsWith('audio/') || 
-        fileType === 'video/mp4' || 
-        fileType === 'video/webm' ||
-        fileType === 'application/octet-stream' // 一部の音声ファイルの場合
-      ) {
-        // 音声ファイルの処理
-        try {
-          console.log('音声ファイルの処理を開始');
-          
-          // Google Generative AI APIの初期化
-          const { GoogleGenerativeAI } = require('@google/generative-ai');
-          
-          // 環境変数にAPIキーがない場合はエラーを返す
-          if (!process.env.GOOGLE_API_KEY) {
-            throw new Error('Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。');
-          }
-          
-          // Google AI SDKの初期化
-          const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-          
-          // ファイルをBase64エンコード
-          const base64Audio = buffer.toString('base64');
-          
-          // Gemini APIの機能を使って音声からテキストを抽出
-          const audioPart = {
-            inlineData: {
-              data: base64Audio,
-              mimeType: fileType
-            }
-          };
-          
-          const prompt = "以下の音声ファイルを文字起こししてください。できるだけ正確に文字起こしを行い、話者の区別や句読点などを適切に入れてください。";
-          
-          // Gemini APIリクエスト
-          const result = await model.generateContent([prompt, audioPart]);
-          const response = await result.response;
-          extractedText = response.text();
-          
-          console.log('音声から文字起こし完了、長さ:', extractedText.length);
-        } catch (error: any) {
-          console.error('音声処理エラー:', error);
-          return NextResponse.json(
-            { error: { message: `音声ファイルの処理に失敗しました: ${error?.message || 'Unknown error'}` } },
-            { status: 500 }
-          );
-        }
-      } else if (
-        fileType.startsWith('image/') // 画像ファイルの処理を追加
-      ) {
-        // 画像ファイルの処理
-        try {
-          console.log('画像ファイルの処理を開始');
-          
-          // Google Generative AI APIの初期化
-          const { GoogleGenerativeAI } = require('@google/generative-ai');
-          
-          // 環境変数にAPIキーがない場合はエラーを返す
-          if (!process.env.GOOGLE_API_KEY) {
-            throw new Error('Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。');
-          }
-          
-          // Google AI SDKの初期化
-          const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-          
-          // ファイルをBase64エンコード
-          const base64Image = buffer.toString('base64');
-          
-          // Gemini APIの機能を使って画像からテキストを抽出
-          const imagePart = {
-            inlineData: {
-              data: base64Image,
-              mimeType: fileType
-            }
-          };
-          
-          const prompt = "この画像内のテキストをすべて抽出してください。画像に日本語と英語が混在している場合は、原文のまま抽出してください。表や図形内のテキストも含めて、レイアウトを保ちながら可能な限り正確に抽出してください。";
-          
-          // Gemini APIリクエスト
-          const result = await model.generateContent([prompt, imagePart]);
-          const response = await result.response;
-          extractedText = response.text();
-          
-          console.log('画像からテキスト抽出完了、長さ:', extractedText.length);
-        } catch (error: any) {
-          console.error('画像処理エラー:', error);
-          return NextResponse.json(
-            { error: { message: `画像ファイルの処理に失敗しました: ${error?.message || 'Unknown error'}` } },
-            { status: 500 }
-          );
-        }
       } else {
         console.log('サポートされていないファイル形式:', fileType);
         return NextResponse.json(
-          { error: { message: 'サポートされていないファイル形式です。PDF、Word文書、音声ファイル、または画像ファイル（JPG、PNG、GIF、WEBP）をアップロードしてください。' } },
+          { error: { message: 'サポートされていないファイル形式です。PDFまたはWord文書をアップロードしてください。' } },
           { status: 400 }
         );
       }
@@ -368,4 +275,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+} 
