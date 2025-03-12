@@ -247,96 +247,37 @@ export async function POST(req: NextRequest) {
         try {
           console.log('音声ファイルの処理を開始');
           
-          // Gemini APIを使用して音声をテキストに変換
-          const { exec } = require('child_process');
-          const util = require('util');
-          const execPromise = util.promisify(exec);
+          // Google Generative AI APIの初期化
+          const { GoogleGenerativeAI } = require('@google/generative-ai');
           
-          // Node.jsスクリプトを作成して実行
-          const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
-          const scriptContent = `
-            const fs = require('fs');
-            const { GoogleGenerativeAI } = require('@google/generative-ai');
-            const path = require('path');
-            
-            async function main() {
-              try {
-                // 環境変数にAPIキーがない場合はエラーを返す
-                if (!process.env.GOOGLE_API_KEY) {
-                  console.error(JSON.stringify({
-                    error: 'Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。'
-                  }));
-                  process.exit(1);
-                }
-                
-                // Google Generative AI APIの初期化
-                const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-                
-                // ファイルの読み込み
-                const filePath = '${tempFileName.replace(/\\/g, '\\\\')}';
-                const fileBuffer = fs.readFileSync(filePath);
-                
-                // ファイルをBase64エンコード
-                const base64Audio = fileBuffer.toString('base64');
-                
-                // Geminiモデルの初期化（正しいモデル名に修正）
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-                
-                // Gemini APIの機能を使って音声を文字起こし
-                const transcriptionPart = {
-                  inlineData: {
-                    data: base64Audio,
-                    mimeType: "${fileType}"
-                  }
-                };
-                
-                const result = await model.generateContent([
-                  "以下の音声ファイルを文字起こししてください。できるだけ正確に文字起こしを行い、話者の区別や句読点などを適切に入れてください。", 
-                  transcriptionPart
-                ]);
-                
-                const response = await result.response;
-                const transcription = response.text();
-                
-                console.log(JSON.stringify({ text: transcription }));
-              } catch (error) {
-                console.error(JSON.stringify({ error: error.message }));
-                process.exit(1);
-              }
-            }
-            
-            main();
-          `;
-          
-          await writeFile(scriptPath, scriptContent);
-          
-          // GOOGLE_API_KEYを環境変数として渡す
-          const { stdout, stderr } = await execPromise(`node "${scriptPath}"`, {
-            env: { ...process.env },
-            timeout: 60000, // 60秒のタイムアウト
-          });
-          
-          // 一時スクリプトを削除
-          await unlink(scriptPath).catch(console.error);
-          
-          if (stderr && stderr.includes('error')) {
-            console.error('音声処理中のエラー:', stderr);
-            throw new Error(stderr);
+          // 環境変数にAPIキーがない場合はエラーを返す
+          if (!process.env.GOOGLE_API_KEY) {
+            throw new Error('Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。');
           }
           
-          try {
-            const result = JSON.parse(stdout);
-            if (result.text) {
-              extractedText = result.text;
-              console.log('音声からテキスト抽出完了、長さ:', extractedText.length);
-            } else if (result.error) {
-              throw new Error(result.error);
-            }
-          } catch (parseErr) {
-            console.error('スクリプト出力のパースエラー:', parseErr, 'stdout:', stdout);
-            throw new Error('音声変換結果の解析に失敗しました');
-          }
+          // Google AI SDKの初期化
+          const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
           
+          // ファイルをBase64エンコード
+          const base64Audio = buffer.toString('base64');
+          
+          // Gemini APIの機能を使って音声からテキストを抽出
+          const audioPart = {
+            inlineData: {
+              data: base64Audio,
+              mimeType: fileType
+            }
+          };
+          
+          const prompt = "以下の音声ファイルを文字起こししてください。できるだけ正確に文字起こしを行い、話者の区別や句読点などを適切に入れてください。";
+          
+          // Gemini APIリクエスト
+          const result = await model.generateContent([prompt, audioPart]);
+          const response = await result.response;
+          extractedText = response.text();
+          
+          console.log('音声から文字起こし完了、長さ:', extractedText.length);
         } catch (error: any) {
           console.error('音声処理エラー:', error);
           return NextResponse.json(
@@ -351,96 +292,37 @@ export async function POST(req: NextRequest) {
         try {
           console.log('画像ファイルの処理を開始');
           
-          // Gemini APIを使用して画像からテキストを抽出
-          const { exec } = require('child_process');
-          const util = require('util');
-          const execPromise = util.promisify(exec);
+          // Google Generative AI APIの初期化
+          const { GoogleGenerativeAI } = require('@google/generative-ai');
           
-          // Node.jsスクリプトを作成して実行
-          const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
-          const scriptContent = `
-            const fs = require('fs');
-            const { GoogleGenerativeAI } = require('@google/generative-ai');
-            const path = require('path');
-            
-            async function main() {
-              try {
-                // 環境変数にAPIキーがない場合はエラーを返す
-                if (!process.env.GOOGLE_API_KEY) {
-                  console.error(JSON.stringify({
-                    error: 'Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。'
-                  }));
-                  process.exit(1);
-                }
-                
-                // Google Generative AI APIの初期化
-                const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-                
-                // ファイルの読み込み
-                const filePath = '${tempFileName.replace(/\\/g, '\\\\')}';
-                const fileBuffer = fs.readFileSync(filePath);
-                
-                // ファイルをBase64エンコード
-                const base64Image = fileBuffer.toString('base64');
-                
-                // Geminiモデルの初期化
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-                
-                // Gemini APIの機能を使って画像からテキストを抽出
-                const imagePart = {
-                  inlineData: {
-                    data: base64Image,
-                    mimeType: "${fileType}"
-                  }
-                };
-                
-                const result = await model.generateContent([
-                  "この画像内のテキストをすべて抽出してください。画像に日本語と英語が混在している場合は、原文のまま抽出してください。表や図形内のテキストも含めて、レイアウトを保ちながら可能な限り正確に抽出してください。",
-                  imagePart
-                ]);
-                
-                const response = await result.response;
-                const extractedText = response.text();
-                
-                console.log(JSON.stringify({ text: extractedText }));
-              } catch (error) {
-                console.error(JSON.stringify({ error: error.message }));
-                process.exit(1);
-              }
-            }
-            
-            main();
-          `;
-          
-          await writeFile(scriptPath, scriptContent);
-          
-          // GOOGLE_API_KEYを環境変数として渡す
-          const { stdout, stderr } = await execPromise(`node "${scriptPath}"`, {
-            env: { ...process.env },
-            timeout: 60000, // 60秒のタイムアウト
-          });
-          
-          // 一時スクリプトを削除
-          await unlink(scriptPath).catch(console.error);
-          
-          if (stderr && stderr.includes('error')) {
-            console.error('画像処理中のエラー:', stderr);
-            throw new Error(stderr);
+          // 環境変数にAPIキーがない場合はエラーを返す
+          if (!process.env.GOOGLE_API_KEY) {
+            throw new Error('Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。');
           }
           
-          try {
-            const result = JSON.parse(stdout);
-            if (result.text) {
-              extractedText = result.text;
-              console.log('画像からテキスト抽出完了、長さ:', extractedText.length);
-            } else if (result.error) {
-              throw new Error(result.error);
-            }
-          } catch (parseErr) {
-            console.error('スクリプト出力のパースエラー:', parseErr, 'stdout:', stdout);
-            throw new Error('画像変換結果の解析に失敗しました');
-          }
+          // Google AI SDKの初期化
+          const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
           
+          // ファイルをBase64エンコード
+          const base64Image = buffer.toString('base64');
+          
+          // Gemini APIの機能を使って画像からテキストを抽出
+          const imagePart = {
+            inlineData: {
+              data: base64Image,
+              mimeType: fileType
+            }
+          };
+          
+          const prompt = "この画像内のテキストをすべて抽出してください。画像に日本語と英語が混在している場合は、原文のまま抽出してください。表や図形内のテキストも含めて、レイアウトを保ちながら可能な限り正確に抽出してください。";
+          
+          // Gemini APIリクエスト
+          const result = await model.generateContent([prompt, imagePart]);
+          const response = await result.response;
+          extractedText = response.text();
+          
+          console.log('画像からテキスト抽出完了、長さ:', extractedText.length);
         } catch (error: any) {
           console.error('画像処理エラー:', error);
           return NextResponse.json(
