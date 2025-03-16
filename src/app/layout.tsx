@@ -7,7 +7,7 @@ import Navbar from '@/components/Navbar';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Memly API',
+  title: 'Memly : AIフラッシュカードアプリ',
   description: 'API built with Vercel AI SDK',
   icons: {
     icon: '/favicon.svg',
