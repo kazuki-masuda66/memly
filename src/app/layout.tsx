@@ -10,7 +10,11 @@ export const metadata: Metadata = {
   title: 'Memly API',
   description: 'API built with Vercel AI SDK',
   icons: {
+<<<<<<< HEAD
     icon: '/favicon.png',
+=======
+    icon: '/favicon.svg',
+>>>>>>> 107a9742aad79a95ac0d9cc7054843b9d394afd2
   },
 };
 
@@ -21,6 +25,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
+      <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
           <Navbar />
@@ -31,4 +38,4 @@ export default function RootLayout({
       </body>
     </html>
   );
-} 
+}
