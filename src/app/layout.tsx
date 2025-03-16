@@ -10,11 +10,7 @@ export const metadata: Metadata = {
   title: 'Memly API',
   description: 'API built with Vercel AI SDK',
   icons: {
-<<<<<<< HEAD
-    icon: '/favicon.png',
-=======
     icon: '/favicon.svg',
->>>>>>> 107a9742aad79a95ac0d9cc7054843b9d394afd2
   },
 };
 
