@@ -102,22 +102,32 @@ export async function POST(request: Request) {
       // 成功レスポンス
       return NextResponse.json({
         success: true,
+        message: '学習セッションを開始しました',
         sessionId: sessionId,
-        deckIds: deckIds, // デッキIDを返す
-        mode: mode,
-        totalCards: totalCards,
-        mockMode: mockMode, // モックモードかどうかを返す
+        session: {
+          id: sessionId,
+          mode: mode,
+          status: 'in_progress',
+          deckIds: deckIds,
+          totalCards: totalCards,
+        },
+        mock: mockMode
       });
     } catch (error) {
       console.error('セッション作成例外:', error);
       // エラーが発生しても、セッションIDとデッキIDを返す
       return NextResponse.json({
         success: true,
+        message: '学習セッションを開始しました',
         sessionId: sessionId,
-        deckIds: deckIds,
-        mode: mode,
-        totalCards: deckIds.length * 5, // 推定値
-        mockMode: true,
+        session: {
+          id: sessionId,
+          mode: mode,
+          status: 'in_progress',
+          deckIds: deckIds,
+          totalCards: deckIds.length * 5, // 推定値
+        },
+        mock: true
       });
     }
   } catch (error) {

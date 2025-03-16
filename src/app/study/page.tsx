@@ -109,10 +109,10 @@ function StudyContent() {
       if (data.success) {
         // セッションIDを取得して学習画面に遷移
         const sessionId = data.sessionId;
-        // デッキIDを明示的にURLパラメータとして渡す
+        // デッキIDとモードを明示的にURLパラメータとして渡す
         const deckIdParam = selectedDeckIds.join(',');
-        console.log(`学習開始: セッションID=${sessionId}, デッキID=${deckIdParam}`);
-        router.push(`/study/session/${sessionId}?deckId=${deckIdParam}`);
+        console.log(`学習開始: セッションID=${sessionId}, デッキID=${deckIdParam}, モード=${studyMode}`);
+        router.push(`/study/session/${sessionId}?deckId=${deckIdParam}&mode=${studyMode}&forceQuiz=${studyMode === 'quiz' ? 'true' : 'false'}`);
       } else {
         setError(data.message || '学習セッションの開始に失敗しました');
         setIsStarting(false);
@@ -161,9 +161,9 @@ function StudyContent() {
                   className="mt-1"
                 />
                 <div>
-                  <label htmlFor="flashcard" className="font-medium block">フラッシュカード</label>
+                  <label htmlFor="flashcard" className="font-medium block">一問一答</label>
                   <p className="text-sm text-gray-500">
-                    カードを表示して、自分でめくりながら学習します。自己採点形式です。
+                    問題と答えのカードを順番に表示し、理解度に応じて「超簡単」「容易」「難しい」「忘却」の4段階で評価しながら学習します。
                   </p>
                 </div>
               </div>
@@ -179,9 +179,9 @@ function StudyContent() {
                   className="mt-1"
                 />
                 <div>
-                  <label htmlFor="quiz" className="font-medium block">クイズモード</label>
+                  <label htmlFor="quiz" className="font-medium block">選択肢(4択)</label>
                   <p className="text-sm text-gray-500">
-                    問題を表示し、答えを確認した後に正解・不正解を記録します。
+                    問題に対する4つの選択肢から正解を選ぶクイズ形式です。知識の定着度を客観的に測れます。
                   </p>
                 </div>
               </div>
@@ -197,9 +197,9 @@ function StudyContent() {
                   className="mt-1"
                 />
                 <div>
-                  <label htmlFor="truefalse" className="font-medium block">○×問題</label>
+                  <label htmlFor="truefalse" className="font-medium block">正誤判定</label>
                   <p className="text-sm text-gray-500">
-                    問題に対して正しいか誤りかを判断します。
+                    問題に対して「正」か「誤」かを判断する形式です。素早く多くの問題を解くのに適しています。
                   </p>
                 </div>
               </div>
