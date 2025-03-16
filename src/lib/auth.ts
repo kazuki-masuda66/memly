@@ -20,10 +20,31 @@ export const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
 
 // サインアップ（新規ユーザー登録）
 export async function signUp(email: string, password: string) {
+  // リダイレクトURLの構築（開発・本番環境の両方で動作するように）
+  let redirectUrl = '/auth/confirm';
+  
+  // ブラウザ環境では絶対URLを構築
+  if (typeof window !== 'undefined') {
+    redirectUrl = `${window.location.origin}${redirectUrl}`;
+  }
+
   const { data, error } = await supabaseAuth.auth.signUp({
     email,
     password,
+    options: {
+      emailRedirectTo: redirectUrl,
+      // メール確認を明示的に要求
+      data: {
+        email_confirmed: false
+      }
+    },
   });
+  
+  if (error) {
+    console.error('サインアップエラー:', error);
+  } else {
+    console.log('サインアップ成功、確認メールを送信しました:', email);
+  }
   
   return { data, error };
 }

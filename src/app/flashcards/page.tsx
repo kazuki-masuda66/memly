@@ -57,6 +57,7 @@ interface Flashcard {
   back: string;
   frontRich?: string; // HTML形式のリッチテキスト
   backRich?: string;  // HTML形式のリッチテキスト
+  response?: string; // 解答時の理解度
 }
 
 interface FlashcardResponse {
@@ -134,6 +135,9 @@ export default function FlashcardsPage() {
     back: '',
     status: 'front'
   });
+  
+  // 正解/不正解の記録状態を拡張して4択対応に
+  const [cardResponses, setCardResponses] = useState<{[key: number]: string}>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -381,6 +385,14 @@ export default function FlashcardsPage() {
     }));
   };
 
+  // カードの理解度を記録する関数（4択対応）
+  const recordCardResponse = (index: number, response: string) => {
+    setCardResponses(prev => ({
+      ...prev,
+      [index]: response
+    }));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -605,6 +617,7 @@ export default function FlashcardsPage() {
             backRich: card.backRich || null,
             category: range || null,
             tags: [],
+            response: card.response || null,
           })),
           deckId: selectedDeckId,
         }),
@@ -1040,6 +1053,54 @@ export default function FlashcardsPage() {
                   ) : (
                     <p>{card.back}</p>
                   )}
+                  
+                  {/* 4択の理解度選択ボタン */}
+                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    <button
+                      onClick={() => recordCardResponse(index, 'ultra_easy')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium ${
+                        cardResponses[index] === 'ultra_easy'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-green-100 text-green-800 hover:bg-green-200'
+                      }`}
+                    >
+                      <span className="mr-1">10点</span>
+                      超簡単
+                    </button>
+                    <button
+                      onClick={() => recordCardResponse(index, 'easy')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium ${
+                        cardResponses[index] === 'easy'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                      }`}
+                    >
+                      <span className="mr-1">4点</span>
+                      容易
+                    </button>
+                    <button
+                      onClick={() => recordCardResponse(index, 'hard')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium ${
+                        cardResponses[index] === 'hard'
+                          ? 'bg-yellow-500 text-white'
+                          : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                      }`}
+                    >
+                      <span className="mr-1">4日</span>
+                      難しい
+                    </button>
+                    <button
+                      onClick={() => recordCardResponse(index, 'forgot')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium ${
+                        cardResponses[index] === 'forgot'
+                          ? 'bg-red-500 text-white'
+                          : 'bg-red-100 text-red-800 hover:bg-red-200'
+                      }`}
+                    >
+                      <span className="mr-1">10分</span>
+                      忘却
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1164,6 +1225,54 @@ export default function FlashcardsPage() {
                     ) : (
                       <p>{card.back}</p>
                     )}
+                  </div>
+                  
+                  {/* 4択の理解度選択ボタン */}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => recordCardResponse(index, 'ultra_easy')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium ${
+                        cardResponses[index] === 'ultra_easy'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-green-100 text-green-800 hover:bg-green-200'
+                      }`}
+                    >
+                      <span className="mr-1">10点</span>
+                      超簡単
+                    </button>
+                    <button
+                      onClick={() => recordCardResponse(index, 'easy')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium ${
+                        cardResponses[index] === 'easy'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                      }`}
+                    >
+                      <span className="mr-1">4点</span>
+                      容易
+                    </button>
+                    <button
+                      onClick={() => recordCardResponse(index, 'hard')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium ${
+                        cardResponses[index] === 'hard'
+                          ? 'bg-yellow-500 text-white'
+                          : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                      }`}
+                    >
+                      <span className="mr-1">4日</span>
+                      難しい
+                    </button>
+                    <button
+                      onClick={() => recordCardResponse(index, 'forgot')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium ${
+                        cardResponses[index] === 'forgot'
+                          ? 'bg-red-500 text-white'
+                          : 'bg-red-100 text-red-800 hover:bg-red-200'
+                      }`}
+                    >
+                      <span className="mr-1">10分</span>
+                      忘却
+                    </button>
                   </div>
                   
                   <div className="flex justify-end space-x-2 mt-4">

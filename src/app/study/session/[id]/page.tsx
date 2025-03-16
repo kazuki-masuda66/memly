@@ -241,32 +241,6 @@ export default function StudySessionPage({ params }: { params: { id: string } })
     submitAnswer(correct);
   };
 
-  // 回答をサーバーに送信
-  const submitAnswer = async (correct: boolean) => {
-    if (!sessionInfo || !cards[currentCardIndex]) return;
-    
-    try {
-      const response = await fetch('/api/study/submitAnswer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId,
-          cardId: cards[currentCardIndex].id,
-          correct,
-          timeTaken: 0, // 実際には経過時間を計測して送信
-        }),
-      });
-      
-      if (!response.ok) {
-        console.error('回答の送信に失敗しました');
-      }
-    } catch (err) {
-      console.error('回答送信エラー:', err);
-    }
-  };
-
   // 次のカードへ進む
   const nextCard = () => {
     if (currentCardIndex < cards.length - 1) {
@@ -286,16 +260,56 @@ export default function StudySessionPage({ params }: { params: { id: string } })
     }
   };
 
-  // 正解として記録
-  const markAsCorrect = () => {
+  // 理解度に応じた記録と次のカードへの移動
+  const markAsUltraEasy = () => {
     setResults(prev => ({ ...prev, correct: prev.correct + 1 }));
+    submitAnswer(true, 'ultra_easy');
     nextCard();
   };
 
-  // 不正解として記録
-  const markAsIncorrect = () => {
-    setResults(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
+  const markAsEasy = () => {
+    setResults(prev => ({ ...prev, correct: prev.correct + 1 }));
+    submitAnswer(true, 'easy');
     nextCard();
+  };
+
+  const markAsHard = () => {
+    setResults(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
+    submitAnswer(false, 'hard');
+    nextCard();
+  };
+
+  const markAsForgot = () => {
+    setResults(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
+    submitAnswer(false, 'forgot');
+    nextCard();
+  };
+
+  // 回答をサーバーに送信（理解度追加）
+  const submitAnswer = async (correct: boolean, difficulty: string = '') => {
+    if (!sessionInfo || !cards[currentCardIndex]) return;
+    
+    try {
+      const response = await fetch('/api/study/submitAnswer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId,
+          cardId: cards[currentCardIndex].id,
+          correct,
+          difficulty, // 理解度を追加
+          timeTaken: 0, // 実際には経過時間を計測して送信
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error('回答の送信に失敗しました');
+      }
+    } catch (err) {
+      console.error('回答送信エラー:', err);
+    }
   };
 
   // セッションを完了
@@ -489,20 +503,34 @@ export default function StudySessionPage({ params }: { params: { id: string } })
 
         {/* 裏面表示時のコントロール */}
         {isFlipped && (
-          <div className="flex flex-col md:flex-row gap-4 w-full max-w-md justify-center">
+          <div className="flex flex-row gap-2 w-full max-w-2xl justify-center">
             <button
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center"
-              onClick={markAsIncorrect}
+              className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center text-sm flex-1"
+              onClick={markAsUltraEasy}
             >
-              <span className="mr-2">✕</span>
-              不正解
+              <span className="mr-1">⭐10点</span>
+              超簡単
             </button>
             <button
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center"
-              onClick={markAsCorrect}
+              className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center text-sm flex-1"
+              onClick={markAsEasy}
             >
-              <span className="mr-2">✓</span>
-              正解
+              <span className="mr-1">✓4点</span>
+              容易
+            </button>
+            <button
+              className="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center justify-center text-sm flex-1"
+              onClick={markAsHard}
+            >
+              <span className="mr-1">▲4日</span>
+              難しい
+            </button>
+            <button
+              className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center text-sm flex-1"
+              onClick={markAsForgot}
+            >
+              <span className="mr-1">✕10分</span>
+              忘却
             </button>
           </div>
         )}

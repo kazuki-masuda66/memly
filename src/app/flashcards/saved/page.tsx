@@ -102,6 +102,8 @@ export default function SavedFlashcardsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCards, setTotalCards] = useState(0);
   const cardsPerPage = 10;
+  // 正解/不正解の記録状態を拡張して4択対応に
+  const [cardResponses, setCardResponses] = useState<Record<string, string>>({});
 
   // デッキ一覧を取得
   useEffect(() => {
@@ -169,6 +171,17 @@ export default function SavedFlashcardsPage() {
       ...prev,
       [id]: !prev[id]
     }));
+  };
+
+  // カードの理解度を記録する関数（4択対応）
+  const recordCardResponse = (id: string, response: string) => {
+    setCardResponses(prev => ({
+      ...prev,
+      [id]: response
+    }));
+    
+    // ここでAPIを呼び出して保存することも可能
+    // 現在のサンプル実装では保存はしていません
   };
 
   // カードを編集する
@@ -346,6 +359,68 @@ export default function SavedFlashcardsPage() {
                         </div>
                       )}
                     </div>
+                    
+                    {/* 4択の理解度選択ボタン */}
+                    {isFlipped && (
+                      <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            recordCardResponse(card.id, 'ultra_easy');
+                          }}
+                          className={`px-2 py-1 rounded-md text-xs font-medium ${
+                            cardResponses[card.id] === 'ultra_easy'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-green-100 text-green-800 hover:bg-green-200'
+                          }`}
+                        >
+                          <span className="mr-1">10点</span>
+                          超簡単
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            recordCardResponse(card.id, 'easy');
+                          }}
+                          className={`px-2 py-1 rounded-md text-xs font-medium ${
+                            cardResponses[card.id] === 'easy'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                          }`}
+                        >
+                          <span className="mr-1">4点</span>
+                          容易
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            recordCardResponse(card.id, 'hard');
+                          }}
+                          className={`px-2 py-1 rounded-md text-xs font-medium ${
+                            cardResponses[card.id] === 'hard'
+                              ? 'bg-yellow-500 text-white'
+                              : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                          }`}
+                        >
+                          <span className="mr-1">4日</span>
+                          難しい
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            recordCardResponse(card.id, 'forgot');
+                          }}
+                          className={`px-2 py-1 rounded-md text-xs font-medium ${
+                            cardResponses[card.id] === 'forgot'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-red-100 text-red-800 hover:bg-red-200'
+                          }`}
+                        >
+                          <span className="mr-1">10分</span>
+                          忘却
+                        </button>
+                      </div>
+                    )}
                     
                     <div className="p-4 bg-gray-50 flex justify-between">
                       <button
