@@ -6,6 +6,9 @@ import { unlink } from 'fs/promises';
 import { mkdir } from 'fs/promises';
 import crypto from 'crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import mammoth from 'mammoth';
+import pdfParse from 'pdf-parse';
+import { PDFExtract } from 'pdf.js-extract';
 
 // NodeJSランタイムを明示的に指定
 export const runtime = 'nodejs';
@@ -87,112 +90,45 @@ export async function POST(req: NextRequest) {
           
           // 1. 最初に pdf-parse を試す
           try {
-            const { exec } = require('child_process');
-            const util = require('util');
-            const execPromise = util.promisify(exec);
-            
             console.log('pdf-parseでPDFを処理中...');
-            
-            const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
-            const scriptContent = `
-              const fs = require('fs');
-              const pdfParse = require('pdf-parse');
-              
-              const dataBuffer = fs.readFileSync('${tempFileName.replace(/\\/g, '\\\\')}');
-              
-              pdfParse(dataBuffer).then(data => {
-                console.log(JSON.stringify({ text: data.text }));
-              }).catch(err => {
-                console.error(JSON.stringify({ error: err.message }));
-                process.exit(1);
-              });
-            `;
-            
-            await writeFile(scriptPath, scriptContent);
-            
-            const { stdout, stderr } = await execPromise(`node "${scriptPath}"`);
-            
-            // スクリプトを削除
-            await unlink(scriptPath).catch(console.error);
-            
-            if (stderr && stderr.includes('error')) {
-              console.error('pdf-parseでのエラー:', stderr);
-              throw new Error(stderr);
-            }
+            const dataBuffer = await readFile(tempFileName);
             
             try {
-              const result = JSON.parse(stdout);
-              if (result.text) {
-                extractedText = result.text;
-                console.log('pdf-parseによるPDFからのテキスト抽出完了、長さ:', extractedText.length);
-                // 成功したので、次の処理へ
-              } else if (result.error) {
-                throw new Error(result.error);
-              }
-            } catch (parseErr) {
-              console.error('pdf-parseの出力のパースエラー:', parseErr);
-              throw new Error('PDF抽出結果の解析に失敗しました');
+              const data = await pdfParse(dataBuffer);
+              extractedText = data.text;
+              console.log('pdf-parseによるPDFからのテキスト抽出完了、長さ:', extractedText.length);
+            } catch (pdfParseError) {
+              console.error('pdf-parseでのエラー:', pdfParseError);
+              throw pdfParseError;
             }
           } catch (pdfParseError) {
             // 2. pdf-parse 失敗時は pdf.js-extract を試す
             console.log('pdf-parseが失敗したため、pdf.js-extractを試みます...');
             
-            const { exec } = require('child_process');
-            const util = require('util');
-            const execPromise = util.promisify(exec);
-            
-            const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
-            const scriptContent = `
-              const PDFExtract = require('pdf.js-extract').PDFExtract;
-              const pdfExtract = new PDFExtract();
-              
-              pdfExtract.extract('${tempFileName.replace(/\\/g, '\\\\')}', {})
-                .then(data => {
-                  // ページごとのテキストを連結
-                  let allText = '';
-                  if (data && data.pages) {
-                    data.pages.forEach(page => {
-                      if (page.content) {
-                        page.content.forEach(item => {
-                          if (item.str) {
-                            allText += item.str + ' ';
-                          }
-                        });
-                        allText += '\\n\\n'; // ページの区切り
-                      }
-                    });
-                  }
-                  console.log(JSON.stringify({ text: allText }));
-                })
-                .catch(err => {
-                  console.error(JSON.stringify({ error: err.message }));
-                  process.exit(1);
-                });
-            `;
-            
-            await writeFile(scriptPath, scriptContent);
-            
-            const { stdout, stderr } = await execPromise(`node "${scriptPath}"`);
-            
-            // スクリプトを削除
-            await unlink(scriptPath).catch(console.error);
-            
-            if (stderr && stderr.includes('error')) {
-              console.error('pdf.js-extractでのエラー:', stderr);
-              throw new Error(`pdf.js-extractでもエラー: ${stderr}`);
-            }
+            const pdfExtract = new PDFExtract();
             
             try {
-              const result = JSON.parse(stdout);
-              if (result.text) {
-                extractedText = result.text;
-                console.log('pdf.js-extractによるPDFからのテキスト抽出完了、長さ:', extractedText.length);
-              } else if (result.error) {
-                throw new Error(result.error);
+              const data = await pdfExtract.extract(tempFileName, {});
+              // ページごとのテキストを連結
+              let allText = '';
+              if (data && data.pages) {
+                data.pages.forEach(page => {
+                  if (page.content) {
+                    page.content.forEach(item => {
+                      if (item.str) {
+                        allText += item.str + ' ';
+                      }
+                    });
+                    allText += '\n\n'; // ページの区切り
+                  }
+                });
               }
-            } catch (parseErr) {
-              console.error('pdf.js-extractの出力のパースエラー:', parseErr);
-              throw new Error('PDF抽出結果の解析に失敗しました（両方のライブラリが失敗）');
+              
+              extractedText = allText;
+              console.log('pdf.js-extractによるPDFからのテキスト抽出完了、長さ:', extractedText.length);
+            } catch (error: any) {
+              console.error('pdf.js-extractでのエラー:', error);
+              throw new Error(`pdf.js-extractでもエラー: ${error.message}`);
             }
           }
           
@@ -211,49 +147,13 @@ export async function POST(req: NextRequest) {
         try {
           console.log('Word文書の処理を開始');
           
-          // 別プロセスでmammothを実行
-          const { exec } = require('child_process');
-          const util = require('util');
-          const execPromise = util.promisify(exec);
-          
-          // Node.jsスクリプトを作成して実行
-          const scriptPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.js`);
-          const scriptContent = `
-            const mammoth = require('mammoth');
-            
-            mammoth.extractRawText({ path: '${tempFileName.replace(/\\/g, '\\\\')}' })
-              .then(result => {
-                console.log(JSON.stringify({ text: result.value }));
-              })
-              .catch(err => {
-                console.error(JSON.stringify({ error: err.message }));
-                process.exit(1);
-              });
-          `;
-          
-          await writeFile(scriptPath, scriptContent);
-          
-          const { stdout, stderr } = await execPromise(`node "${scriptPath}"`);
-          
-          // 一時スクリプトを削除
-          await unlink(scriptPath).catch(console.error);
-          
-          if (stderr && stderr.includes('error')) {
-            console.error('Word解析中のエラー:', stderr);
-            throw new Error(stderr);
-          }
-          
           try {
-            const result = JSON.parse(stdout);
-            if (result.text) {
-              extractedText = result.text;
-              console.log('Word文書からテキスト抽出完了、長さ:', extractedText.length);
-            } else if (result.error) {
-              throw new Error(result.error);
-            }
-          } catch (parseErr) {
-            console.error('スクリプト出力のパースエラー:', parseErr);
-            throw new Error('Word抽出結果の解析に失敗しました');
+            const result = await mammoth.extractRawText({ path: tempFileName });
+            extractedText = result.value;
+            console.log('Word文書からテキスト抽出完了、長さ:', extractedText.length);
+          } catch (mammothError) {
+            console.error('mammothでの解析エラー:', mammothError);
+            throw mammothError;
           }
           
         } catch (error: any) {
@@ -393,4 +293,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
