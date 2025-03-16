@@ -5,13 +5,39 @@ import { writeFile } from 'fs/promises';
 import { unlink } from 'fs/promises';
 import { mkdir } from 'fs/promises';
 import crypto from 'crypto';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // NodeJSランタイムを明示的に指定
 export const runtime = 'nodejs';
 export const maxDuration = 60; // 60秒
 
+// Google AIの初期化
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+
 // 一時ディレクトリのパス設定
 const TEMP_DIR = process.env.TEMP_DIR || './tmp';
+
+// サポートされている音声ファイル形式を定義
+const SUPPORTED_AUDIO_TYPES = [
+  'audio/mpeg',           // MP3
+  'audio/mp4',            // MP4 audio
+  'audio/ogg',            // OGG
+  'audio/wav',            // WAV
+  'audio/webm',           // WEBM audio
+  'audio/x-m4a',          // M4A
+  'audio/aac',            // AAC
+  'audio/flac'            // FLAC
+];
+
+// サポートされている画像ファイル形式を定義
+const SUPPORTED_IMAGE_TYPES = [
+  'image/jpeg',          // JPG, JPEG
+  'image/png',           // PNG
+  'image/gif',           // GIF
+  'image/webp',          // WEBP
+  'image/bmp',           // BMP
+  'image/tiff'           // TIFF
+];
 
 export async function POST(req: NextRequest) {
   try {
@@ -237,10 +263,102 @@ export async function POST(req: NextRequest) {
             { status: 500 }
           );
         }
+      } else if (SUPPORTED_AUDIO_TYPES.includes(fileType)) {
+        // 音声ファイルの処理
+        try {
+          console.log('音声ファイルの処理を開始');
+          console.log('音声ファイル形式:', fileType);
+          
+          // 音声ファイルをBase64エンコード
+          const base64Audio = buffer.toString('base64');
+          
+          // Gemini 1.5 Proを使用して音声を文字起こし
+          const model = genAI.getGenerativeModel({
+            model: 'gemini-1.5-pro',
+          });
+          
+          // リクエストのMIMEタイプと音声データを指定
+          const audioMimeType = fileType;
+          
+          console.log('Gemini APIを呼び出し中...');
+          
+          try {
+            // 音声データをGemini APIに送信
+            const result = await model.generateContent([
+              {
+                inlineData: {
+                  data: base64Audio,
+                  mimeType: audioMimeType
+                }
+              },
+              "この音声を文字起こししてください。できるだけ正確に書き起こし、話者の区別がある場合は区別してください。句読点や改行を適切に入れてください。"
+            ]);
+            
+            const response = await result.response;
+            extractedText = response.text();
+            
+            console.log('音声文字起こし完了、長さ:', extractedText.length);
+          } catch (geminiError: any) {
+            console.error('Gemini API呼び出しエラー:', geminiError);
+            throw new Error(`音声文字起こしに失敗しました: ${geminiError?.message || 'Unknown error'}`);
+          }
+        } catch (audioError: any) {
+          console.error('音声処理エラー:', audioError);
+          return NextResponse.json(
+            { error: { message: `音声ファイルの処理に失敗しました: ${audioError?.message || 'Unknown error'}` } },
+            { status: 500 }
+          );
+        }
+      } else if (SUPPORTED_IMAGE_TYPES.includes(fileType)) {
+        // 画像ファイルの処理
+        try {
+          console.log('画像ファイルの処理を開始');
+          console.log('画像ファイル形式:', fileType);
+          
+          // 画像ファイルをBase64エンコード
+          const base64Image = buffer.toString('base64');
+          
+          // Gemini 1.5 Proを使用して画像からテキストを抽出
+          const model = genAI.getGenerativeModel({
+            model: 'gemini-1.5-pro',
+          });
+          
+          // リクエストのMIMEタイプと画像データを指定
+          const imageMimeType = fileType;
+          
+          console.log('Gemini APIを呼び出し中...');
+          
+          try {
+            // 画像データをGemini APIに送信
+            const result = await model.generateContent([
+              {
+                inlineData: {
+                  data: base64Image,
+                  mimeType: imageMimeType
+                }
+              },
+              "この画像内のすべてのテキストを抽出してください。表、図表、グラフなどの内容も含めてテキスト化してください。レイアウトはできるだけ保持し、段落や箇条書きなどの構造を維持してください。"
+            ]);
+            
+            const response = await result.response;
+            extractedText = response.text();
+            
+            console.log('画像からのテキスト抽出完了、長さ:', extractedText.length);
+          } catch (geminiError: any) {
+            console.error('Gemini API呼び出しエラー:', geminiError);
+            throw new Error(`画像からのテキスト抽出に失敗しました: ${geminiError?.message || 'Unknown error'}`);
+          }
+        } catch (imageError: any) {
+          console.error('画像処理エラー:', imageError);
+          return NextResponse.json(
+            { error: { message: `画像ファイルの処理に失敗しました: ${imageError?.message || 'Unknown error'}` } },
+            { status: 500 }
+          );
+        }
       } else {
         console.log('サポートされていないファイル形式:', fileType);
         return NextResponse.json(
-          { error: { message: 'サポートされていないファイル形式です。PDFまたはWord文書をアップロードしてください。' } },
+          { error: { message: 'サポートされていないファイル形式です。PDF、Word文書、音声ファイル（MP3, WAV, OGG, M4A, FLAC, WebM, AAC）、または画像ファイル（JPG, PNG, GIF, WEBP, BMP, TIFF）をアップロードしてください。' } },
           { status: 400 }
         );
       }

@@ -2,7 +2,13 @@
   "version": 2,
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install",
+  "installCommand": "npm install && npm install mammoth pdf-parse pdf.js-extract",
   "framework": "nextjs",
-  "regions": ["hnd1", "sin1"]
+  "regions": ["hnd1", "sin1"],
+  "functions": {
+    "api/**/*": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  }
 }
