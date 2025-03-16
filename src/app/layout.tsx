@@ -9,6 +9,9 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Memly API',
   description: 'API built with Vercel AI SDK',
+  icons: {
+    icon: '/favicon.png',
+  },
 };
 
 export default function RootLayout({
