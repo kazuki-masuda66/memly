@@ -23,6 +23,8 @@ interface Flashcard {
   easeFactor?: number;
   interval?: number;
   repetitions?: number;
+  front_rich?: string | null;
+  back_rich?: string | null;
 }
 
 // 選択肢の型定義（4択問題用）
