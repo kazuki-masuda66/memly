@@ -17,8 +17,12 @@ interface Flashcard {
   id: string;
   front: string;
   back: string;
-  front_rich?: string | null;
-  back_rich?: string | null;
+  deckId: number;
+  lastReviewed?: string;
+  nextReview?: string;
+  easeFactor?: number;
+  interval?: number;
+  repetitions?: number;
 }
 
 // 選択肢の型定義（4択問題用）
@@ -123,7 +127,7 @@ export default function StudySessionPage({ params }: { params: { id: string } })
           
           console.log(`${shuffledCards.length}枚のカードを読み込みました`);
           
-          // クイズモードの場合、ここで全カードの選択肢を一括生成
+          // クイズモードの場合のみ、ここで全カードの選択肢を一括生成
           if (sessionInfo.mode === 'quiz' && !apiRequestTracker.batchApiCalled) {
             console.log('クイズモードのため、ここですべての選択肢を一括生成します');
             
@@ -140,10 +144,13 @@ export default function StudySessionPage({ params }: { params: { id: string } })
             setChoicesFetchAttempted(true);
             
             // カードIDを記録
-            shuffledCards.forEach(card => apiRequestTracker.cardIdsProcessed.add(card.id));
+            shuffledCards.forEach((card: Flashcard) => apiRequestTracker.cardIdsProcessed.add(card.id));
             
-            // 非同期で選択肢を取得
             fetchAllChoices(shuffledCards, requestId);
+          } else if (sessionInfo.mode !== 'quiz') {
+            // 一問一答モードの場合は選択肢生成をスキップ
+            console.log('一問一答モードのため、選択肢生成をスキップします');
+            setIsChoicesGenerated(true); // 選択肢生成完了フラグを立てる（スキップしたので完了とみなす）
           }
         } else {
           console.error('カード取得エラー:', data.message);
@@ -171,6 +178,13 @@ export default function StudySessionPage({ params }: { params: { id: string } })
   useEffect(() => {
     console.log(`カード読み込み完了: cards.length=${cards.length}, mode=${sessionInfo?.mode}`);
     
+    // 一問一答モードの場合は選択肢生成をスキップ
+    if (sessionInfo?.mode === 'flashcard') {
+      console.log('一問一答モードのため、選択肢生成をスキップします');
+      setIsChoicesGenerated(true); // 選択肢生成完了フラグを立てる
+      return;
+    }
+    
     // グローバル変数でAPIが既に呼び出されている場合はスキップ
     if (apiRequestTracker.batchApiCalled) {
       console.log('バッチAPIは既に呼び出されているためスキップします');
@@ -187,6 +201,13 @@ export default function StudySessionPage({ params }: { params: { id: string } })
       console.log('URLからクイズモードを検出しました');
     }
     
+    // 一問一答モードの場合は選択肢生成をスキップ
+    if (modeParam === 'flashcard' || (!isQuizMode && modeParam !== 'quiz')) {
+      console.log('一問一答モードのため、選択肢生成をスキップします');
+      setIsChoicesGenerated(true); // 選択肢生成完了フラグを立てる
+      return;
+    }
+    
     // カードが読み込まれ、クイズモードで、まだバッチAPIを呼び出していない場合のみ実行
     if (cards.length > 0 && isQuizMode && !apiRequestTracker.batchApiCalled) {
       console.log('クイズモードのため全カードの選択肢を一括取得します');
@@ -194,7 +215,7 @@ export default function StudySessionPage({ params }: { params: { id: string } })
       // グローバル変数でAPIが呼び出されたことを記録
       apiRequestTracker.batchApiCalled = true;
       
-      // 一意のリクエストIDを生成
+      // 一意のリクエストIDを生成（タイムスタンプ + ランダム文字列）
       const requestId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
       apiRequestTracker.currentBatchRequestId = requestId;
       batchApiRequestIdRef.current = requestId;
@@ -204,33 +225,21 @@ export default function StudySessionPage({ params }: { params: { id: string } })
       setChoicesFetchAttempted(true);
       
       // カードIDを記録
-      cards.forEach(card => apiRequestTracker.cardIdsProcessed.add(card.id));
-      
-      fetchAllChoices(cards, requestId);
-    } else if (cards.length > 0 && urlParams.get('forceQuiz') === 'true' && !apiRequestTracker.batchApiCalled) {
-      console.log('forceQuizパラメータにより強制的に全カードの選択肢を一括取得します');
-      
-      // グローバル変数でAPIが呼び出されたことを記録
-      apiRequestTracker.batchApiCalled = true;
-      
-      // 一意のリクエストIDを生成
-      const requestId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-      apiRequestTracker.currentBatchRequestId = requestId;
-      batchApiRequestIdRef.current = requestId;
-      
-      // バッチAPIを呼び出す前にフラグを設定
-      batchApiFetchedRef.current = true;
-      setChoicesFetchAttempted(true);
-      
-      // カードIDを記録
-      cards.forEach(card => apiRequestTracker.cardIdsProcessed.add(card.id));
+      cards.forEach((card: Flashcard) => apiRequestTracker.cardIdsProcessed.add(card.id));
       
       fetchAllChoices(cards, requestId);
     }
   }, [cards, sessionInfo?.mode]);
 
   // すべてのカードの選択肢を一括取得する関数
-  const fetchAllChoices = async (cardsToFetch: any[], requestId: string) => {
+  const fetchAllChoices = async (cardsToFetch: Flashcard[], requestId: string) => {
+    // 一問一答モードの場合は選択肢生成をスキップ
+    if (sessionInfo?.mode === 'flashcard' || new URLSearchParams(window.location.search).get('mode') === 'flashcard') {
+      console.log('一問一答モードのため、選択肢生成をスキップします');
+      setIsChoicesGenerated(true); // 選択肢生成完了フラグを立てる
+      return;
+    }
+    
     if (cardsToFetch.length === 0) {
       setIsChoicesGenerated(true);
       return;
@@ -249,7 +258,7 @@ export default function StudySessionPage({ params }: { params: { id: string } })
     }
     
     // 既に処理済みのカードIDと完全に一致する場合はスキップ
-    const cardIds = cardsToFetch.map(card => card.id);
+    const cardIds = cardsToFetch.map((card: Flashcard) => card.id);
     const allCardsAlreadyProcessed = cardIds.every(id => apiRequestTracker.cardIdsProcessed.has(id));
     
     if (allCardsAlreadyProcessed && Object.keys(allChoicesMap).length > 0) {
@@ -262,7 +271,7 @@ export default function StudySessionPage({ params }: { params: { id: string } })
       console.log(`全カードの選択肢取得開始: カード数=${cardsToFetch.length}`);
       
       // すべてのカードのIDを抽出
-      const cardIds = cardsToFetch.map(card => card.id);
+      const cardIds = cardsToFetch.map((card: Flashcard) => card.id);
       
       // バッチAPIを呼び出して一括で選択肢を取得
       console.log('バッチAPIを呼び出して一括で選択肢を取得します', cardIds);
@@ -366,71 +375,68 @@ export default function StudySessionPage({ params }: { params: { id: string } })
 
   // 選択肢をランダムに並び替える関数
   const shuffleChoices = (choices: any[]) => {
+    if (!choices || choices.length === 0) return [];
+    
     // 配列のコピーを作成
     const shuffled = [...choices];
     
-    // Fisher-Yatesアルゴリズムで配列をシャッフル
-    for (let i = shuffled.length - 1; i > 0; i--) {
+    // 正解の選択肢を特定
+    const correctChoice = shuffled.find(choice => choice.isCorrect);
+    const incorrectChoices = shuffled.filter(choice => !choice.isCorrect);
+    
+    // 不正解の選択肢だけをシャッフル
+    for (let i = incorrectChoices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      [incorrectChoices[i], incorrectChoices[j]] = [incorrectChoices[j], incorrectChoices[i]];
     }
     
-    return shuffled;
+    // 正解と不正解をランダムな位置に配置
+    const result = [];
+    const correctPosition = Math.floor(Math.random() * 4); // 0-3のランダムな位置
+    
+    for (let i = 0; i < 4; i++) {
+      if (i === correctPosition) {
+        result.push(correctChoice);
+      } else {
+        result.push(incorrectChoices.pop());
+      }
+    }
+    
+    // ラベル（A, B, C, D）を順番に割り当て
+    const labels = ['A', 'B', 'C', 'D'];
+    return result.map((choice, index) => ({
+      ...choice,
+      id: labels[index]
+    }));
   };
 
   // カードが変更されたときに選択肢を更新
   useEffect(() => {
     // リセット
-    setSelectedChoice(null);
-    setIsAnswered(false);
-    setIsCorrect(null);
-    setIsFlipped(false);
-    
-    // 現在のカードIDを取得
-    const currentCard = cards[currentCardIndex];
-    if (!currentCard) return;
-    
-    if (sessionInfo?.mode === 'quiz') {
-      // クイズモードの場合、すでに生成済みの選択肢マップから取得
-      if (allChoicesMap[currentCard.id]) {
-        console.log(`カードID ${currentCard.id} の選択肢をマップから取得:`, allChoicesMap[currentCard.id]);
-        setChoices(allChoicesMap[currentCard.id]);
-      } else {
-        console.log(`カードID ${currentCard.id} の選択肢がマップにないため空に設定`);
-        setChoices([]);
-      }
-    }
-  }, [currentCardIndex, cards, sessionInfo?.mode, allChoicesMap]);
-
-  // カードのコンテンツが更新されたときの処理
-  useEffect(() => {
     console.log(`カード/モード更新: currentCardIndex=${currentCardIndex}, mode=${sessionInfo?.mode}`);
     setSelectedChoice(null);
     setIsAnswered(false);
     setIsCorrect(null);
     setIsFlipped(false);
     
+    // 一問一答モードの場合は選択肢を設定しない
+    if (sessionInfo?.mode === 'flashcard' || new URLSearchParams(window.location.search).get('mode') === 'flashcard') {
+      return;
+    }
+    
     // 現在のカードIDに対応する選択肢がすでに取得済みなら設定
     if (cards.length > 0 && currentCardIndex < cards.length) {
       const currentCardId = cards[currentCardIndex].id;
-      if (allChoicesMap[currentCardId]) {
-        console.log(`カード${currentCardId}の選択肢をキャッシュから設定`);
-        setChoices(allChoicesMap[currentCardId]);
-        return;
-      }
       
-      // バッチ取得が完了していて、このカードの選択肢がない場合のみ個別取得
-      if ((sessionInfo?.mode === 'quiz' || new URLSearchParams(window.location.search).get('forceQuiz') === 'true') 
-          && choicesFetchAttempted 
-          && batchApiFetchedRef.current 
-          && !isGeneratingChoices) {
-        console.log('クイズモードでカードが変更されたため個別に選択肢を取得します');
-        fetchChoices(currentCardId);
+      if (allChoicesMap[currentCardId]) {
+        console.log(`カードID ${currentCardId} の選択肢をマップから取得:`, allChoicesMap[currentCardId]);
+        setChoices(allChoicesMap[currentCardId]);
       } else {
-        console.log(`選択肢取得条件未満: cards.length=${cards.length}, currentCardIndex=${currentCardIndex}, mode=${sessionInfo?.mode}, batchFetched=${batchApiFetchedRef.current}`);
+        console.log(`カードID ${currentCardId} の選択肢がマップにないため空に設定`);
+        setChoices([]);
       }
     }
-  }, [currentCardIndex, cards, allChoicesMap, sessionInfo?.mode, choicesFetchAttempted, isGeneratingChoices]);
+  }, [currentCardIndex, cards, sessionInfo?.mode, allChoicesMap]);
 
   // デフォルトの選択肢を取得する関数
   const getDefaultChoices = () => {
