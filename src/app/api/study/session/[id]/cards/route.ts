@@ -50,7 +50,7 @@ export async function GET(
         .from('study_sessions')
         .select('*')
         .eq('id', sessionId)
-        .single();
+        .maybeSingle(); // single()ではなくmaybeSingle()を使用
       
       if (sessionError) {
         console.error('セッション取得エラー:', sessionError);

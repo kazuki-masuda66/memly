@@ -43,36 +43,23 @@ export async function GET(
         .from('study_sessions')
         .select('*')
         .eq('id', sessionId)
-        .single();
+        .maybeSingle();
       
       if (sessionError) {
         console.error('セッション取得エラー:', sessionError);
-        
-        // セッションが見つからない場合でも、deckIdsが指定されていれば、ダミーセッションを返す
-        if (deckIds.length > 0) {
-          console.log('セッションが見つからないため、ダミーデータを返します');
-          return NextResponse.json({
-            success: true,
-            session: {
-              id: sessionId,
-              mode: 'flashcard',
-              status: 'in_progress',
-              deckIds: deckIds,
-              totalCards: 0, // カード数は後で取得
-              start_time: new Date().toISOString(),
-              mockMode: true
-            }
-          });
-        }
-        
+      }
+      
+      // セッションが見つからない場合でも、deckIdsが指定されていれば、ダミーセッションを返す
+      if (!sessionData && deckIds.length > 0) {
+        console.log('セッションが見つからないため、URLパラメータからダミーデータを生成します');
         return NextResponse.json({
           success: true,
           session: {
             id: sessionId,
-            mode: 'flashcard',
+            mode: url.searchParams.get('mode') || 'flashcard',
             status: 'in_progress',
-            deckIds: [],
-            totalCards: 5,
+            deckIds: deckIds,
+            totalCards: 0, // カード数は後で取得
             start_time: new Date().toISOString(),
             mockMode: true
           }

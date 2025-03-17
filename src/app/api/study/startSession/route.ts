@@ -52,7 +52,7 @@ export async function POST(request: Request) {
           .from('study_sessions')
           .insert({
             id: sessionId,
-            user_id: 'dummy-user-id', // 実際の認証システムと連携する場合は変更
+            user_id: uuidv4(), // 有効なUUID形式の値を使用
             mode: mode,
             status: 'in_progress',
             start_time: new Date().toISOString(),
