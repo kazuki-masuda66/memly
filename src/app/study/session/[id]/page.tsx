@@ -59,23 +59,34 @@ export default function StudySessionPage({ params }: { params: { id: string } })
   const [cards, setCards] = useState<Flashcard[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [choices, setChoices] = useState<Choice[]>([]);
-  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<{ correct: number; incorrect: number }>({
-    correct: 0,
-    incorrect: 0,
-  });
+  const [isAnswered, setIsAnswered] = useState(false);
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [results, setResults] = useState({ correct: 0, incorrect: 0 });
   const [showResultPopup, setShowResultPopup] = useState(false);
-  const [isGeneratingChoices, setIsGeneratingChoices] = useState(false); // 選択肢生成中フラグ
-  const [allChoicesMap, setAllChoicesMap] = useState<{[key: string]: any[]}>({});  // すべてのカードIDに対応する選択肢を保存
-  const [isChoicesGenerated, setIsChoicesGenerated] = useState(false); // 全選択肢生成完了フラグ
+  const [choices, setChoices] = useState<any[]>([]);
+  const [allChoicesMap, setAllChoicesMap] = useState<{[key: string]: any[]}>({});
+  const [isGeneratingChoices, setIsGeneratingChoices] = useState(false);
+  const [isChoicesGenerated, setIsChoicesGenerated] = useState(false);
   const [choicesFetchAttempted, setChoicesFetchAttempted] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showApiErrorPopup, setShowApiErrorPopup] = useState(false);
+  const [apiErrorMessage, setApiErrorMessage] = useState('');
+
+  // 正誤問題用の状態変数
+  const [trueFalseMap, setTrueFalseMap] = useState<{[key: string]: any[]}>({});
+  const [trueFalseQuestions, setTrueFalseQuestions] = useState<any[]>([]);
+  const [currentTrueFalseIndex, setCurrentTrueFalseIndex] = useState(0);
+  const [isTrueFalseMode, setIsTrueFalseMode] = useState(false);
+  const [isTrueFalseAnswered, setIsTrueFalseAnswered] = useState(false);
+  const [selectedTrueFalseAnswer, setSelectedTrueFalseAnswer] = useState<boolean | null>(null);
+  const [isTrueFalseCorrect, setIsTrueFalseCorrect] = useState<boolean | null>(null);
+  const [isTrueFalseGenerated, setIsTrueFalseGenerated] = useState(false);
+  const [isFetchingTrueFalse, setIsFetchingTrueFalse] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  // 参照変数
   const batchApiFetchedRef = useRef(false); // useRefを使用して重複呼び出しを防止
   const batchApiRequestIdRef = useRef<string | null>(null); // バッチAPIリクエストの識別子
 
@@ -96,15 +107,43 @@ export default function StudySessionPage({ params }: { params: { id: string } })
         const data = await response.json();
         if (data.success) {
           setSessionInfo(data.session);
+          
+          // 選択されたカードを設定
+          setCards(data.cards);
+          
+          // URLからモードを取得
+          const urlParams = new URLSearchParams(window.location.search);
+          const modeParam = urlParams.get('mode');
+          
+          // 正誤判定モードが指定されていれば自動的に切り替える
+          if (modeParam === 'truefalse') {
+            setIsTrueFalseMode(true);
+            setInitialLoading(true);
+            
+            // カードが設定された後に正誤問題を生成
+            if (data.cards && data.cards.length > 0) {
+              fetchAllTrueFalseQuestions(data.cards, true);
+            }
+          } else {
+            setInitialLoading(false);
+            // 4択モードの場合は選択肢を取得
+            if (data.session && data.session.mode === 'quiz') {
+              fetchAllChoices(data.cards, sessionId);
+            }
+          }
         } else {
-          console.error('セッション情報取得エラー:', data.message);
+          console.error('Failed to get session info:', data.message);
         }
       } catch (error) {
-        console.error('セッション情報取得例外:', error);
+        console.error('Error fetching session info:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
     
-    fetchSessionInfo();
+    if (sessionId) {
+      fetchSessionInfo();
+    }
   }, [sessionId]);
 
   // カードを取得
@@ -171,14 +210,14 @@ export default function StudySessionPage({ params }: { params: { id: string } })
 
   // 進捗状況を更新
   useEffect(() => {
-    if (cards.length > 0) {
-      setProgress(Math.round(((currentCardIndex + 1) / cards.length) * 100));
+    if (cards && cards.length > 0) {
+      setProgress(Math.round(((currentCardIndex + 1) / (cards?.length || 1)) * 100));
     }
-  }, [currentCardIndex, cards.length]);
+  }, [currentCardIndex, cards]);
 
   // カードが読み込まれたときの処理
   useEffect(() => {
-    console.log(`カード読み込み完了: cards.length=${cards.length}, mode=${sessionInfo?.mode}`);
+    console.log(`カード読み込み完了: cards.length=${cards ? cards.length : 0}, mode=${sessionInfo?.mode}`);
     
     // 一問一答モードの場合は選択肢生成をスキップ
     if (sessionInfo?.mode === 'flashcard') {
@@ -211,7 +250,7 @@ export default function StudySessionPage({ params }: { params: { id: string } })
     }
     
     // カードが読み込まれ、クイズモードで、まだバッチAPIを呼び出していない場合のみ実行
-    if (cards.length > 0 && isQuizMode && !apiRequestTracker.batchApiCalled) {
+    if (cards && cards.length > 0 && isQuizMode && !apiRequestTracker.batchApiCalled) {
       console.log('クイズモードのため全カードの選択肢を一括取得します');
       
       // グローバル変数でAPIが呼び出されたことを記録
@@ -234,7 +273,7 @@ export default function StudySessionPage({ params }: { params: { id: string } })
   }, [cards, sessionInfo?.mode]);
 
   // すべてのカードの選択肢を一括取得する関数
-  const fetchAllChoices = async (cardsToFetch: Flashcard[], requestId: string) => {
+  const fetchAllChoices = async (cardsToFetch: Flashcard[] | undefined, requestId: string) => {
     // 一問一答モードの場合は選択肢生成をスキップ
     if (sessionInfo?.mode === 'flashcard' || new URLSearchParams(window.location.search).get('mode') === 'flashcard') {
       console.log('一問一答モードのため、選択肢生成をスキップします');
@@ -242,7 +281,9 @@ export default function StudySessionPage({ params }: { params: { id: string } })
       return;
     }
     
-    if (cardsToFetch.length === 0) {
+    // cardsToFetchが存在しないか、空の配列の場合は処理をスキップ
+    if (!cardsToFetch || cardsToFetch.length === 0) {
+      console.log('カードが0枚または未定義のため、選択肢生成をスキップします');
       setIsChoicesGenerated(true);
       return;
     }
@@ -265,15 +306,14 @@ export default function StudySessionPage({ params }: { params: { id: string } })
     
     if (allCardsAlreadyProcessed && Object.keys(allChoicesMap).length > 0) {
       console.log('すべてのカードは既に処理済みです');
+      setIsChoicesGenerated(true); // 選択肢生成完了フラグを立てる
       return;
     }
     
     try {
       setIsGeneratingChoices(true); // 選択肢生成開始
-      console.log(`全カードの選択肢取得開始: カード数=${cardsToFetch.length}`);
-      
-      // すべてのカードのIDを抽出
-      const cardIds = cardsToFetch.map((card: Flashcard) => card.id);
+      setInitialLoading(true); // 4択問題生成中のローディング表示を有効化
+      console.log(`全カードの選択肢取得開始: カード数=${cardsToFetch.length}, カードIDs=${JSON.stringify(cardIds)}`);
       
       // バッチAPIを呼び出して一括で選択肢を取得
       console.log('バッチAPIを呼び出して一括で選択肢を取得します', cardIds);
@@ -288,23 +328,63 @@ export default function StudySessionPage({ params }: { params: { id: string } })
       
       if (!response.ok) {
         console.error('バッチAPIの呼び出しに失敗:', response.status, response.statusText);
+        // エラー時はデフォルトの選択肢を設定
+        const defaultChoicesMap: {[key: string]: any[]} = {};
+        cardsToFetch.forEach((card: Flashcard) => {
+          defaultChoicesMap[card.id] = getDefaultChoicesForCard(card);
+        });
+        setAllChoicesMap(defaultChoicesMap);
+        
+        if (cardsToFetch.length > 0) {
+          const firstCardId = cardsToFetch[0].id;
+          setChoices(defaultChoicesMap[firstCardId]);
+        }
+        
+        // エラーポップアップを表示
+        const errorMessage = `選択肢生成APIの呼び出しに失敗しました。(${response.status}: ${response.statusText})`;
+        setApiErrorMessage(errorMessage);
+        setShowApiErrorPopup(true);
+        
         throw new Error(`バッチAPI呼び出しエラー: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
+      console.log('バッチAPI応答:', data);
       
       if (data.success) {
         // 応答から選択肢マップを作成
         const choicesMap: {[key: string]: any[]} = {};
         
         // レスポンスから各カードの選択肢をマップに格納（並び替えてから保存）
-        data.data.cards.forEach((card: any) => {
-          // 選択肢を並び替え
-          const shuffledChoices = shuffleChoices(card.choices);
-          choicesMap[card.id] = shuffledChoices;
-        });
+        if (data.data && data.data.cards && Array.isArray(data.data.cards)) {
+          data.data.cards.forEach((card: any) => {
+            if (card && card.id && card.choices && Array.isArray(card.choices)) {
+              // 選択肢を並び替え
+              const shuffledChoices = shuffleChoices(card.choices);
+              choicesMap[card.id] = shuffledChoices;
+              console.log(`カードID ${card.id} の選択肢を設定:`, shuffledChoices);
+            } else {
+              console.warn(`カードデータが不完全です:`, card);
+              
+              // 不完全なデータの場合はポップアップを表示
+              if (card && card.id) {
+                const errorMessage = `カードID ${card.id} のデータが不完全です。デフォルトの選択肢を使用します。`;
+                setApiErrorMessage(errorMessage);
+                setShowApiErrorPopup(true);
+              }
+            }
+          });
+        } else {
+          console.error('バッチAPIのレスポンス形式が不正:', data);
+          
+          // レスポンス形式が不正な場合はポップアップを表示
+          const errorMessage = 'APIのレスポンス形式が不正です。デフォルトの選択肢を使用します。';
+          setApiErrorMessage(errorMessage);
+          setShowApiErrorPopup(true);
+        }
         
         // すべての選択肢をステートに保存
+        console.log('選択肢マップを設定:', choicesMap);
         setAllChoicesMap(choicesMap);
         console.log('バッチAPIで全カードの選択肢取得完了:', Object.keys(choicesMap).length);
         
@@ -313,66 +393,166 @@ export default function StudySessionPage({ params }: { params: { id: string } })
           const firstCardId = cardsToFetch[0].id;
           if (choicesMap[firstCardId]) {
             setChoices(choicesMap[firstCardId]);
+          } else {
+            console.warn(`最初のカード ${firstCardId} の選択肢がマップにありません`);
+            // デフォルトの選択肢を設定
+            const defaultChoices = getDefaultChoicesForCard(cardsToFetch[0]);
+            setChoices(defaultChoices);
+            
+            // 選択肢がない場合はポップアップを表示
+            const errorMessage = `カードID ${firstCardId} の選択肢が見つかりません。デフォルトの選択肢を使用します。`;
+            setApiErrorMessage(errorMessage);
+            setShowApiErrorPopup(true);
           }
         }
       } else {
         console.error('バッチAPI呼び出しエラー:', data.message);
+        // エラー時はデフォルトの選択肢を設定
+        const defaultChoicesMap: {[key: string]: any[]} = {};
+        cardsToFetch.forEach((card: Flashcard) => {
+          defaultChoicesMap[card.id] = getDefaultChoicesForCard(card);
+        });
+        setAllChoicesMap(defaultChoicesMap);
+        
+        if (cardsToFetch.length > 0) {
+          const firstCardId = cardsToFetch[0].id;
+          setChoices(defaultChoicesMap[firstCardId]);
+        }
+        
+        // APIエラーの場合はポップアップを表示
+        const errorMessage = `選択肢生成APIでエラーが発生しました: ${data.message}`;
+        setApiErrorMessage(errorMessage);
+        setShowApiErrorPopup(true);
+        
         throw new Error(`バッチAPI呼び出しエラー: ${data.message}`);
       }
       
     } catch (error) {
       console.error('全カードの選択肢取得エラー:', error);
+      
+      // 例外発生時もポップアップを表示
+      if (!showApiErrorPopup) {  // 既に表示されていない場合のみ
+        const errorMessage = `選択肢生成中にエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`;
+        setApiErrorMessage(errorMessage);
+        setShowApiErrorPopup(true);
+      }
     } finally {
       setIsGeneratingChoices(false); // 選択肢生成完了
       setIsChoicesGenerated(true); // 学習開始可能に設定
+      setInitialLoading(false); // 4択問題生成中のローディング表示を無効化
     }
   };
 
-  // 4択問題の選択肢を取得（単一カード用）
-  const fetchChoices = async (cardId: string) => {
-    // すでに取得済みの選択肢があればそれを使用
-    if (allChoicesMap[cardId]) {
-      console.log(`カード${cardId}の選択肢はすでに取得済みです`);
-      setChoices(allChoicesMap[cardId]);
+  // すべてのカードの正誤問題を一括取得する関数
+  const fetchAllTrueFalseQuestions = async (cardsToFetch: Flashcard[] | undefined, forceReload = false) => {
+    if (isFetchingTrueFalse) return;
+    if (isTrueFalseGenerated && !forceReload) return;
+    
+    // cardsToFetchが存在しないか、空の配列の場合は処理をスキップ
+    if (!cardsToFetch || cardsToFetch.length === 0) {
+      console.log('カードが0枚または未定義のため、正誤問題生成をスキップします');
+      setIsTrueFalseGenerated(true);
+      setIsFetchingTrueFalse(false);
+      setInitialLoading(false);
       return;
     }
     
     try {
-      setIsGeneratingChoices(true); // 選択肢生成開始
-      console.log(`選択肢取得開始: cardId=${cardId}`);
+      setIsFetchingTrueFalse(true);
       
-      // APIを呼び出して選択肢を取得
-      const response = await fetch(`/api/study/card/multiplechoice/${cardId}`);
+      // APIリクエスト
+      const response = await fetch('/api/study/card/truefalse/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards: cardsToFetch }),
+      });
+      
       if (!response.ok) {
-        console.error('選択肢取得に失敗しました:', response.status, response.statusText);
-        throw new Error('選択肢の取得に失敗しました');
+        throw new Error(`API エラー: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('選択肢取得結果:', data);
       
-      if (data.success && data.data && data.data.choices) {
-        // 選択肢を並び替え
-        const shuffledChoices = shuffleChoices(data.data.choices);
+      if (data.success) {
+        // 正誤問題データを設定
+        setTrueFalseMap(data.trueFalseMap);
+        setIsTrueFalseGenerated(true);
         
-        // 選択肢をステートに設定
-        setChoices(shuffledChoices);
+        // 全ての正誤問題を配列に変換
+        const allQuestions: any[] = [];
+        if (data.trueFalseMap) {
+          Object.keys(data.trueFalseMap).forEach(cardId => {
+            if (data.trueFalseMap[cardId]) {
+              data.trueFalseMap[cardId].forEach((question: any) => {
+                allQuestions.push({
+                  ...question,
+                  cardId
+                });
+              });
+            }
+          });
+        }
         
-        // 選択肢マップにも追加（キャッシュ）
-        setAllChoicesMap(prev => ({
-          ...prev,
-          [cardId]: shuffledChoices
-        }));
+        // 問題をシャッフル
+        const shuffledQuestions = shuffleArray([...allQuestions]);
+        setTrueFalseQuestions(shuffledQuestions);
+        
+        // 確実に正誤問題モードになるようにフラグを設定
+        setIsTrueFalseMode(true);
       } else {
-        console.error('選択肢取得エラー:', data.message || '不明なエラー');
-        setChoices([]);
+        setApiErrorMessage(data.message || 'エラーが発生しました');
+        setShowApiErrorPopup(true);
       }
     } catch (error) {
-      console.error('選択肢取得例外:', error);
-      setChoices([]);
+      console.error('正誤問題取得エラー:', error);
+      setApiErrorMessage(`正誤問題の取得中にエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
+      setShowApiErrorPopup(true);
     } finally {
-      setIsGeneratingChoices(false);
+      setIsFetchingTrueFalse(false);
+      setInitialLoading(false);
     }
+  };
+
+  // 配列をシャッフルする関数
+  const shuffleArray = (array: any[]) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
+  // デフォルトの選択肢を取得する関数
+  const getDefaultChoices = () => {
+    if (!cards || currentCardIndex >= cards.length) {
+      console.warn('カードが存在しないため、デフォルト選択肢を返します');
+      return [
+        { id: 'A', text: '正解', isCorrect: true },
+        { id: 'B', text: '不正解の選択肢1', isCorrect: false },
+        { id: 'C', text: '不正解の選択肢2', isCorrect: false },
+        { id: 'D', text: '不正解の選択肢3', isCorrect: false },
+      ];
+    }
+    
+    const backText = cards[currentCardIndex]?.back || '正解';
+    return [
+      { id: 'A', text: backText, isCorrect: true },
+      { id: 'B', text: `不正解の選択肢1（${backText}とは異なる答え）`, isCorrect: false },
+      { id: 'C', text: `不正解の選択肢2（${backText}とは異なる答え）`, isCorrect: false },
+      { id: 'D', text: `不正解の選択肢3（${backText}とは異なる答え）`, isCorrect: false },
+    ];
+  };
+  
+  // 特定のカード用のデフォルト選択肢を生成する関数
+  const getDefaultChoicesForCard = (card: Flashcard) => {
+    const backText = card?.back || '正解';
+    return [
+      { id: 'A', text: backText, isCorrect: true },
+      { id: 'B', text: `不正解の選択肢1（${backText}とは異なる答え）`, isCorrect: false },
+      { id: 'C', text: `不正解の選択肢2（${backText}とは異なる答え）`, isCorrect: false },
+      { id: 'D', text: `不正解の選択肢3（${backText}とは異なる答え）`, isCorrect: false },
+    ];
   };
 
   // 選択肢をランダムに並び替える関数
@@ -412,652 +592,547 @@ export default function StudySessionPage({ params }: { params: { id: string } })
     }));
   };
 
-  // カードが変更されたときに選択肢を更新
-  useEffect(() => {
-    // リセット
-    console.log(`カード/モード更新: currentCardIndex=${currentCardIndex}, mode=${sessionInfo?.mode}`);
-    setSelectedChoice(null);
-    setIsAnswered(false);
-    setIsCorrect(null);
-    setIsFlipped(false);
-    
-    // 一問一答モードの場合は選択肢を設定しない
-    if (sessionInfo?.mode === 'flashcard' || new URLSearchParams(window.location.search).get('mode') === 'flashcard') {
-      return;
-    }
-    
-    // 現在のカードIDに対応する選択肢がすでに取得済みなら設定
-    if (cards.length > 0 && currentCardIndex < cards.length) {
-      const currentCardId = cards[currentCardIndex].id;
-      
-      if (allChoicesMap[currentCardId]) {
-        console.log(`カードID ${currentCardId} の選択肢をマップから取得:`, allChoicesMap[currentCardId]);
-        setChoices(allChoicesMap[currentCardId]);
-      } else {
-        console.log(`カードID ${currentCardId} の選択肢がマップにないため空に設定`);
-        setChoices([]);
-      }
-    }
-  }, [currentCardIndex, cards, sessionInfo?.mode, allChoicesMap]);
-
-  // デフォルトの選択肢を取得する関数
-  const getDefaultChoices = () => {
-    const backText = cards[currentCardIndex]?.back || '正解';
-    return [
-      { id: 'a', text: backText, isCorrect: true },
-      { id: 'b', text: `不正解の選択肢1（${backText}とは異なる答え）`, isCorrect: false },
-      { id: 'c', text: `不正解の選択肢2（${backText}とは異なる答え）`, isCorrect: false },
-      { id: 'd', text: `不正解の選択肢3（${backText}とは異なる答え）`, isCorrect: false },
-    ];
-  };
-
-  // カードをめくる
-  const flipCard = () => {
-    // フラッシュカードモードならカードをめくる、クイズモードなら回答を表示する
-    if (sessionInfo?.mode === 'flashcard') {
-      setIsFlipped(!isFlipped);
-    } else if (sessionInfo?.mode === 'quiz' && !isFlipped) {
-      setIsFlipped(true);
-    }
-  };
-
-  // 選択肢を選ぶ（4択問題用）
+  // 選択肢を選択した時の処理
   const handleChoiceSelect = (choiceId: string) => {
-    if (isAnswered) return;
+    if (isAnswered) return; // 既に回答済みの場合は何もしない
     
     setSelectedChoice(choiceId);
-    const selected = choices.find(choice => choice.id === choiceId);
-    
-    if (selected) {
-      setIsCorrect(selected.isCorrect);
-      setIsAnswered(true);
-      
-      // 統計を更新
-      setResults(prev => ({
-        ...prev,
-        correct: prev.correct + (selected.isCorrect ? 1 : 0),
-        incorrect: prev.incorrect + (selected.isCorrect ? 0 : 1),
-      }));
-      
-      // 回答をめくって表示する
-      setIsFlipped(true);
-    }
-  };
-
-  // 正誤を自己申告（一問一答用）
-  const handleSelfAssessment = (correct: boolean) => {
-    setIsCorrect(correct);
     setIsAnswered(true);
     
-    // 統計を更新
-    setResults(prev => ({
-      ...prev,
-      correct: prev.correct + (correct ? 1 : 0),
-      incorrect: prev.incorrect + (correct ? 0 : 1),
-    }));
-    
-    // 回答をサーバーに送信
-    submitAnswer(correct);
-  };
-
-  // 次のカードへ進む
-  const nextCard = () => {
-    if (currentCardIndex < cards.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setIsFlipped(false);
-      setSelectedChoice(null);
-      setIsAnswered(false);
-      setIsCorrect(null);
-    } else {
-      // 最後のカードが終わったら結果を表示
-      setShowResultPopup(true);
+    // 選択した選択肢が正解かどうかをチェック
+    if (choices && choices.length > 0) {
+      const selected = choices.find(choice => choice.id === choiceId);
+      const isCorrect = selected?.isCorrect || false;
+      
+      // 結果を更新
+      setIsCorrect(isCorrect);
+      setResults(prev => ({
+        correct: isCorrect ? prev.correct + 1 : prev.correct,
+        incorrect: !isCorrect ? prev.incorrect + 1 : prev.incorrect
+      }));
     }
   };
 
-  // 前のカードへ
-  const prevCard = () => {
+  // カードをめくる処理
+  const handleFlip = () => {
+    if (isAnswered) return; // 既に回答済みの場合は何もしない
+    setIsFlipped(true);
+  };
+
+  // 評価タイプの定義
+  type EvaluationType = 'veryEasy' | 'easy' | 'difficult' | 'forgotten';
+
+  // 一問一答モードでの回答処理
+  const handleAnswer = (evaluationType: EvaluationType) => {
+    // 評価タイプに基づいて正誤を判定
+    const correct = evaluationType === 'veryEasy' || evaluationType === 'easy';
+    
+    // 結果を更新
+    setResults(prev => ({
+      correct: correct ? prev.correct + 1 : prev.correct,
+      incorrect: !correct ? prev.incorrect + 1 : prev.incorrect
+    }));
+    
+    setIsAnswered(true);
+    setIsCorrect(correct);
+    
+    // 少し待ってから次のカードへ
+    setTimeout(() => {
+      handleNextCard();
+    }, 500);
+  };
+
+  // 前のカードへ移動
+  const handlePrevCard = () => {
     if (currentCardIndex > 0) {
       setCurrentCardIndex(currentCardIndex - 1);
       setIsFlipped(false);
-    }
-  };
-
-  // 回答をサーバーに送信（理解度追加）
-  const submitAnswer = async (correct: boolean, difficulty: string = '') => {
-    if (!sessionInfo || !cards[currentCardIndex]) return;
-    
-    try {
-      console.log('送信するリクエストデータ:', {
-        sessionId,
-        cardId: cards[currentCardIndex].id,
-        correct,
-        difficulty,
-        timeTaken: 0
-      });
+      setIsAnswered(false);
+      setSelectedChoice(null);
+      setIsCorrect(null);
       
-      // 非同期でAPIを呼び出すが、結果を待たずに次に進む（エラーハンドリングのみ行う）
-      fetch('/api/study/submitAnswer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId,
-          cardId: cards[currentCardIndex].id,
-          correct,
-          difficulty,
-          timeTaken: 0,
-        }),
-      }).then(response => {
-        if (!response.ok) {
-          console.error('回答の送信に失敗しました', {
-            status: response.status,
-            statusText: response.statusText
-          });
+      // 現在のカードの選択肢を設定
+      if (sessionInfo?.mode === 'quiz' && cards && cards.length > 0) {
+        const prevCardId = cards[currentCardIndex - 1].id;
+        if (allChoicesMap[prevCardId]) {
+          setChoices(allChoicesMap[prevCardId]);
+        } else {
+          // 選択肢がない場合はデフォルトを使用
+          setChoices(getDefaultChoicesForCard(cards[currentCardIndex - 1]));
         }
-      }).catch(err => {
-        console.error('回答送信エラー:', err);
-      });
+      }
+    }
+  };
+
+  // 次のカードへ移動
+  const handleNextCard = () => {
+    if (cards && currentCardIndex < cards.length - 1) {
+      setCurrentCardIndex(currentCardIndex + 1);
+      setIsFlipped(false);
+      setIsAnswered(false);
+      setSelectedChoice(null);
+      setIsCorrect(null);
       
-      // APIの結果を待たずに処理を続行
-      return true;
-    } catch (err) {
-      console.error('回答送信エラー (クライアント側):', err);
-      // エラーが発生しても処理を続行
-      return false;
-    }
-  };
-
-  // 理解度に応じた記録と次のカードへの移動
-  const markAsUltraEasy = () => {
-    if (isSubmitting) return; // 処理中の場合は何もしない
-    setIsSubmitting(true);
-    
-    setResults(prev => ({ ...prev, correct: prev.correct + 1 }));
-    submitAnswer(true, 'ultra_easy');
-    
-    // 最後のカードかどうかをチェック
-    if (currentCardIndex < cards.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setIsFlipped(false);
-      setSelectedChoice(null);
-      setIsAnswered(false);
-      setIsCorrect(null);
+      // 現在のカードの選択肢を設定
+      if (sessionInfo?.mode === 'quiz' && cards && cards.length > 0) {
+        const nextCardId = cards[currentCardIndex + 1].id;
+        if (allChoicesMap[nextCardId]) {
+          setChoices(allChoicesMap[nextCardId]);
+        } else {
+          // 選択肢がない場合はデフォルトを使用
+          setChoices(getDefaultChoicesForCard(cards[currentCardIndex + 1]));
+        }
+      }
     } else {
-      // 最後のカードが終わったら結果を表示
-      setShowResultPopup(true);
+      // 最後のカードの場合は学習完了を実行
+      handleStudyComplete();
+    }
+  };
+
+  // 正誤問題に回答する処理
+  const handleTrueFalseAnswer = (answer: boolean) => {
+    if (!trueFalseQuestions || trueFalseQuestions.length === 0 || currentTrueFalseIndex >= trueFalseQuestions.length) {
+      return;
     }
     
-    // 少し遅延させてボタンを再有効化
-    setTimeout(() => setIsSubmitting(false), 500);
+    const currentQuestion = trueFalseQuestions[currentTrueFalseIndex];
+    if (!currentQuestion) return;
+    
+    // 回答済みの場合は何もしない
+    if (isTrueFalseAnswered) return;
+    
+    setSelectedTrueFalseAnswer(answer);
+    setIsTrueFalseAnswered(true);
+    
+    // 正誤判定
+    const isCorrect = answer === currentQuestion.isTrue;
+    setIsTrueFalseCorrect(isCorrect);
+    
+    // 結果を記録
+    setResults(prev => ({
+      correct: isCorrect ? prev.correct + 1 : prev.correct,
+      incorrect: !isCorrect ? prev.incorrect + 1 : prev.incorrect
+    }));
   };
 
-  const markAsEasy = () => {
-    if (isSubmitting) return; // 処理中の場合は何もしない
-    setIsSubmitting(true);
-    
-    setResults(prev => ({ ...prev, correct: prev.correct + 1 }));
-    submitAnswer(true, 'easy');
-    
-    // 最後のカードかどうかをチェック
-    if (currentCardIndex < cards.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setIsFlipped(false);
-      setSelectedChoice(null);
-      setIsAnswered(false);
-      setIsCorrect(null);
-    } else {
-      // 最後のカードが終わったら結果を表示
-      setShowResultPopup(true);
+  // 次の正誤問題に進む関数
+  const handleNextTrueFalseQuestion = () => {
+    if (!trueFalseQuestions || trueFalseQuestions.length === 0) {
+      return;
     }
     
-    // 少し遅延させてボタンを再有効化
-    setTimeout(() => setIsSubmitting(false), 500);
-  };
-
-  const markAsHard = () => {
-    if (isSubmitting) return; // 処理中の場合は何もしない
-    setIsSubmitting(true);
-    
-    setResults(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
-    submitAnswer(false, 'hard');
-    
-    // 最後のカードかどうかをチェック
-    if (currentCardIndex < cards.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setIsFlipped(false);
-      setSelectedChoice(null);
-      setIsAnswered(false);
-      setIsCorrect(null);
-    } else {
-      // 最後のカードが終わったら結果を表示
-      setShowResultPopup(true);
+    // 最後の問題だった場合は結果表示
+    if (currentTrueFalseIndex >= trueFalseQuestions.length - 1) {
+      handleStudyComplete();
+      return;
     }
     
-    // 少し遅延させてボタンを再有効化
-    setTimeout(() => setIsSubmitting(false), 500);
+    // 次の問題に進む
+    setCurrentTrueFalseIndex(currentTrueFalseIndex + 1);
+    setIsTrueFalseAnswered(false);
+    setSelectedTrueFalseAnswer(null);
+    setIsTrueFalseCorrect(null);
   };
-
-  const markAsForgot = () => {
-    if (isSubmitting) return; // 処理中の場合は何もしない
-    setIsSubmitting(true);
-    
-    setResults(prev => ({ ...prev, incorrect: prev.incorrect + 1 }));
-    submitAnswer(false, 'forgot');
-    
-    // 最後のカードかどうかをチェック
-    if (currentCardIndex < cards.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setIsFlipped(false);
-      setSelectedChoice(null);
-      setIsAnswered(false);
-      setIsCorrect(null);
-    } else {
-      // 最後のカードが終わったら結果を表示
-      setShowResultPopup(true);
+  
+  // URLパラメータからモードを取得する
+  useEffect(() => {
+    if (cards && cards.length > 0 && !isLoading) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const modeParam = urlParams.get('mode');
+      
+      // URLパラメータにtruefalseモードが指定されていれば自動的に切り替える
+      if (modeParam === 'truefalse') {
+        // 直接APIを呼び出して正誤問題を生成
+        fetchAllTrueFalseQuestions(cards);
+      }
     }
+  }, [cards, isLoading]);
+
+  // URLパラメータからモードを取得する
+  useEffect(() => {
+    if (cards && cards.length > 0 && !isLoading) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const modeParam = urlParams.get('mode');
+      
+      // URLパラメータにtruefalseモードが指定されていれば自動的に切り替える
+      if (modeParam === 'truefalse') {
+        // 直接APIを呼び出して正誤問題を生成
+        fetchAllTrueFalseQuestions(cards);
+      }
+    }
+  }, [cards, isLoading]);
+
+  // 学習終了時の共通処理
+  const handleStudyComplete = () => {
+    // 結果ポップアップを表示
+    setShowResultPopup(true);
+  };
+
+  // APIエラーポップアップコンポーネント
+  const ApiErrorPopup = () => {
+    if (!showApiErrorPopup) return null;
     
-    // 少し遅延させてボタンを再有効化
-    setTimeout(() => setIsSubmitting(false), 500);
-  };
-
-  // セッションを完了
-  const completeSession = async () => {
-    // ここでセッション完了のAPIを呼び出す（実装されていない場合はスキップ）
-    router.push('/decks');
-  };
-
-  // 現在のカードを取得
-  const currentCard = cards.length > 0 && currentCardIndex < cards.length ? cards[currentCardIndex] : null;
-
-  // ローディング中の表示
-  if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
-        <p className="text-lg">学習セッションを読み込み中...</p>
-      </div>
-    );
-  }
-
-  // エラー時の表示
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full">
-          <h2 className="text-xl font-semibold text-red-700 mb-2">エラーが発生しました</h2>
-          <p className="text-red-600 mb-4">{error}</p>
-          <div className="flex justify-center">
-            <Link href="/study" className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              学習モード選択に戻る
-            </Link>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <h3 className="text-xl font-bold mb-4 text-red-600">エラーが発生しました</h3>
+          <p className="mb-6">{apiErrorMessage}</p>
+          <p className="mb-6 text-gray-600">デフォルトの選択肢を使用して学習を続行します。</p>
+          <div className="flex justify-end">
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+              onClick={() => setShowApiErrorPopup(false)}
+            >
+              閉じる
+            </button>
           </div>
         </div>
       </div>
     );
-  }
+  };
 
-  // カードがない場合の表示
-  if (cards.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md w-full">
-          <h2 className="text-xl font-semibold text-yellow-700 mb-2">カードが見つかりません</h2>
-          <p className="text-yellow-600 mb-4">選択したデッキにカードが登録されていないか、エラーが発生しました。</p>
-          <div className="flex justify-center">
-            <Link href="/study" className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              学習モード選択に戻る
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 全選択肢生成完了まで待機
-  if (!isChoicesGenerated) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent mb-4"></div>
-        <p className="text-lg">選択肢を生成中...</p>
-      </div>
-    );
-  }
+  // モードを切り替える関数
+  const toggleTrueFalseMode = () => {
+    // 正誤問題モードに切り替える場合
+    if (!isTrueFalseMode) {
+      // モード切り替え（先にフラグを変更）
+      setIsTrueFalseMode(true);
+      setInitialLoading(true);
+      
+      // まだ正誤問題が生成されていない場合は生成
+      if (!isTrueFalseGenerated && cards && cards.length > 0) {
+        fetchAllTrueFalseQuestions(cards);
+      } else {
+        // すでに生成済みの場合はローディングを終了
+        setInitialLoading(false);
+      }
+    } else {
+      // 一問一答/4択モードに戻す
+      setIsTrueFalseMode(false);
+    }
+    
+    // 状態をリセット
+    setIsTrueFalseAnswered(false);
+    setSelectedTrueFalseAnswer(null);
+    setIsTrueFalseCorrect(null);
+    setCurrentTrueFalseIndex(0);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="text-blue-600 hover:text-blue-800 flex items-center">
-            <span className="mr-2">←</span> 戻る
-          </Link>
-          <h1 className="text-lg font-semibold">学習セッション</h1>
-          <div className="w-20"></div> {/* スペーサー */}
+    <div className="min-h-screen bg-gray-100 flex flex-col">
+      {/* ヘッダー */}
+      <div className="bg-white shadow-md p-4">
+        <div className="container mx-auto flex justify-between items-center">
+          <h1 className="text-xl font-bold">学習セッション</h1>
+          <div className="flex space-x-4">
+            <button 
+              className={`px-4 py-2 rounded-md ${!isTrueFalseMode ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+              onClick={() => {
+                if (isTrueFalseMode) toggleTrueFalseMode();
+              }}
+            >
+              {sessionInfo?.mode === 'quiz' ? '4択問題' : '一問一答'}
+            </button>
+            <button 
+              className={`px-4 py-2 rounded-md ${isTrueFalseMode ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+              onClick={() => {
+                if (!isTrueFalseMode) {
+                  // 正誤問題モードへの切り替え
+                  toggleTrueFalseMode();
+                }
+              }}
+              disabled={isFetchingTrueFalse}
+            >
+              正誤問題
+            </button>
+          </div>
         </div>
-      </header>
-      
-      {/* ローディング表示 - カード情報読み込み中 */}
-      {isLoading && (
-        <div className="flex-grow flex flex-col items-center justify-center">
-          <div className="animate-spin h-12 w-12 border-4 border-blue-500 rounded-full border-t-transparent"></div>
-          <p className="mt-4 text-lg">カード情報を読み込み中...</p>
-        </div>
-      )}
+      </div>
 
-      {/* 選択肢生成中の表示 - クイズモードでの初期生成時 */}
-      {!isLoading && isGeneratingChoices && (
-        <div className="flex-grow flex flex-col items-center justify-center">
-          <div className="animate-spin h-12 w-12 border-4 border-blue-500 rounded-full border-t-transparent"></div>
-          <p className="mt-4 text-lg">AIがすべての問題の選択肢を生成中...</p>
-          <p className="mt-2 text-sm text-gray-500">この処理は少し時間がかかります</p>
-        </div>
-      )}
-
-      {/* カードがない場合の表示 */}
-      {!isLoading && !isGeneratingChoices && cards.length === 0 && (
-        <div className="flex-grow flex flex-col items-center justify-center">
+      {/* ローディング中の表示 */}
+      {isLoading ? (
+        <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-lg">カードが見つかりませんでした</p>
-            <Link href="/" className="mt-4 inline-block px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-              ホームに戻る
-            </Link>
+            <div className="animate-spin h-10 w-10 border-4 border-blue-500 rounded-full border-t-transparent mx-auto mb-4"></div>
+            <p className="text-lg">学習セッション情報を読み込み中...</p>
           </div>
         </div>
-      )}
-
-      {/* 学習コンテンツ - カード読み込み完了、かつ選択肢生成完了（または一問一答モード）の場合のみ表示 */}
-      {!isLoading && !isGeneratingChoices && cards.length > 0 && (sessionInfo?.mode !== 'quiz' || isChoicesGenerated) && (
-        <>
-          {/* 学習状況 */}
-          <div className="flex justify-between items-center mb-6 container mx-auto px-4 pt-6">
-            <div className="text-sm text-gray-600">
-              {currentCardIndex + 1} / {cards.length}
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center text-green-600">
-                <span className="mr-1">✓</span>
-                <span>{results.correct}</span>
-              </div>
-              <div className="flex items-center text-red-600">
-                <span className="mr-1">✕</span>
-                <span>{results.incorrect}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ヘッダー */}
-          <div className="flex justify-between items-center mb-6 container mx-auto px-4">
-            <Link href="/study" className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center">
-              <span className="mr-1">←</span>
-              戻る
-            </Link>
-            <div className="text-sm text-gray-500">
-              {currentCardIndex + 1} / {cards.length}
-            </div>
-          </div>
-
+      ) : (
+        <div className="flex-1 py-6">
           {/* 進捗バー */}
-          <div className="w-full bg-gray-200 h-2 rounded-full mb-8 container mx-auto px-4">
-            <div 
-              className="bg-blue-500 h-2 rounded-full" 
-              style={{ width: `${progress}%` }}
-            ></div>
+          <div className="bg-white shadow-sm mb-6">
+            <div className="container mx-auto">
+              <div className="w-full bg-gray-200 h-2">
+                <div 
+                  className="bg-blue-500 h-2" 
+                  style={{ 
+                    width: `${isTrueFalseMode 
+                      ? (trueFalseQuestions && trueFalseQuestions.length > 0 
+                          ? Math.round(((currentTrueFalseIndex + 1) / trueFalseQuestions.length) * 100) 
+                          : 0)
+                      : progress}%` 
+                  }}
+                ></div>
+              </div>
+            </div>
           </div>
 
-          {/* カード */}
-          <div className="flex-grow flex flex-col items-center justify-center mb-8 container mx-auto px-4">
-            {sessionInfo?.mode === 'quiz' || new URLSearchParams(window.location.search).get('forceQuiz') === 'true' ? (
-              // 選択肢(4択)モード
-              <div className="w-full max-w-2xl">
-                <div className="mb-4 text-center">
-                  <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                    選択肢(4択)モード
-                  </span>
-                </div>
-                {/* 問題表示 */}
-                <div className="p-6 md:p-8 bg-white border rounded-lg shadow-md mb-4">
-                  <div className="min-h-[100px] flex items-center justify-center">
-                    <div>
-                      {currentCard && currentCard.front_rich ? (
-                        <div dangerouslySetInnerHTML={{ __html: currentCard.front_rich }} />
-                      ) : (
-                        <p className="text-lg text-center">{currentCard?.front}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+          {/* 正誤問題の読み込み中モーダル */}
+          {initialLoading && (
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+              <div className="bg-white rounded-lg p-8 max-w-md w-full text-center">
+                <div className="animate-spin h-12 w-12 border-4 border-blue-500 rounded-full border-t-transparent mx-auto mb-4"></div>
+                <h3 className="text-xl font-bold mb-2">
+                  {isTrueFalseMode ? '正誤問題を生成中です' : '4択問題を生成中です'}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {isTrueFalseMode 
+                    ? 'AIが正誤問題を作成しています。少々お待ちください...'
+                    : 'AIが4択問題の選択肢を作成しています。少々お待ちください...'}
+                </p>
+              </div>
+            </div>
+          )}
 
-                {/* 選択肢表示 */}
-                {!isAnswered && !isFlipped ? (
-                  // 回答前の選択肢表示
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    {choices.map((choice) => (
+          {/* メインコンテンツ */}
+          <div className="container mx-auto p-4">
+            {(!cards || cards.length === 0) && !initialLoading ? (
+              <div className="text-center py-12">
+                <p className="text-xl text-gray-600">カードが見つかりませんでした。</p>
+                <button 
+                  className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+                  onClick={() => router.push('/study')}
+                >
+                  学習モード選択に戻る
+                </button>
+              </div>
+            ) : !isChoicesGenerated && sessionInfo?.mode === 'quiz' && !isTrueFalseMode ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <h3 className="text-xl font-bold mb-2">4択問題を生成中</h3>
+                <p className="text-gray-600">AIが問題の選択肢を作成しています。少々お待ちください...</p>
+              </div>
+            ) : isTrueFalseMode ? (
+              // 正誤問題モード
+              <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+                {trueFalseQuestions && trueFalseQuestions.length > 0 ? (
+                  <>
+                    <div className="mb-6">
+                      <h2 className="text-xl font-bold mb-2">問題 {currentTrueFalseIndex + 1}/{trueFalseQuestions.length}</h2>
+                      <p 
+                        className="text-lg"
+                        dangerouslySetInnerHTML={{ __html: trueFalseQuestions[currentTrueFalseIndex]?.statement || '' }}
+                      ></p>
+                    </div>
+                    
+                    <div className="mb-6 flex justify-center space-x-6">
                       <button
-                        key={choice.id}
-                        onClick={() => handleChoiceSelect(choice.id)}
-                        disabled={isAnswered}
-                        className={`p-4 border rounded-lg text-left transition-colors ${
-                          selectedChoice === choice.id
-                            ? isAnswered
-                              ? (choice.isCorrect
-                                  ? 'bg-green-100 border-green-500'
-                                  : 'bg-red-100 border-red-500'
-                                )
-                              : 'bg-blue-100 border-blue-500'
-                            : ''
+                        className={`py-3 px-8 rounded-lg text-lg font-bold ${
+                          isTrueFalseAnswered && selectedTrueFalseAnswer === true
+                            ? selectedTrueFalseAnswer === trueFalseQuestions[currentTrueFalseIndex]?.isTrue
+                              ? 'bg-green-500 text-white'
+                              : 'bg-red-500 text-white'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
                         }`}
+                        onClick={() => handleTrueFalseAnswer(true)}
+                        disabled={isTrueFalseAnswered}
                       >
-                        <span className="font-semibold">{choice.id.toUpperCase()}.</span> {choice.text}
+                        ○ (正しい)
                       </button>
-                    ))}
-                  </div>
-                ) : (
-                  // 回答後または解答表示時
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    {choices.map((choice) => {
-                      let className = 'p-4 border rounded-lg text-left ';
-                      if (choice.isCorrect) {
-                        className += 'border-green-500 bg-green-50';
-                      } else if (selectedChoice === choice.id && !choice.isCorrect) {
-                        className += 'border-red-500 bg-red-50';
-                      } else {
-                        className += 'border-gray-200 opacity-70';
-                      }
-                      return (
-                        <div key={choice.id} className={className}>
-                          <span className="font-semibold mr-2">{choice.id.toUpperCase()}.</span>
-                          {choice.text}
-                          {choice.isCorrect && (
-                            <span className="ml-2 text-green-500">✓</span>
-                          )}
-                          {selectedChoice === choice.id && !choice.isCorrect && (
-                            <span className="ml-2 text-red-500">✕</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* 解説表示 */}
-                {isFlipped && currentCard && (
-                  <div className="p-6 md:p-8 bg-blue-50 border border-blue-200 rounded-lg shadow-md mb-4">
-                    <h3 className="font-bold mb-2 text-blue-800">解説</h3>
-                    <div>
-                      {currentCard.back_rich ? (
-                        <div dangerouslySetInnerHTML={{ __html: currentCard.back_rich }} />
-                      ) : (
-                        <p>{currentCard.back}</p>
-                      )}
+                      <button
+                        className={`py-3 px-8 rounded-lg text-lg font-bold ${
+                          isTrueFalseAnswered && selectedTrueFalseAnswer === false
+                            ? selectedTrueFalseAnswer === trueFalseQuestions[currentTrueFalseIndex]?.isTrue
+                              ? 'bg-green-500 text-white'
+                              : 'bg-red-500 text-white'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
+                        onClick={() => handleTrueFalseAnswer(false)}
+                        disabled={isTrueFalseAnswered}
+                      >
+                        × (誤り)
+                      </button>
                     </div>
-
-                    {/* 回答後の理解度評価ボタン */}
-                    {isAnswered && (
-                      <div className="flex flex-row gap-2 w-full max-w-2xl justify-center mt-6">
-                        <button
-                          className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center text-sm flex-1"
-                          onClick={markAsUltraEasy}
-                          disabled={isSubmitting}
-                        >
-                          <span className="mr-1">⭐10点</span>
-                          超簡単
-                        </button>
-                        <button
-                          className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center text-sm flex-1"
-                          onClick={markAsEasy}
-                          disabled={isSubmitting}
-                        >
-                          <span className="mr-1">✓4点</span>
-                          容易
-                        </button>
-                        <button
-                          className="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center justify-center text-sm flex-1"
-                          onClick={markAsHard}
-                          disabled={isSubmitting}
-                        >
-                          <span className="mr-1">▲4日</span>
-                          難しい
-                        </button>
-                        <button
-                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center text-sm flex-1"
-                          onClick={markAsForgot}
-                          disabled={isSubmitting}
-                        >
-                          <span className="mr-1">✕10分</span>
-                          忘却
-                        </button>
+                    
+                    {isTrueFalseAnswered && (
+                      <div className={`p-4 rounded-lg mb-6 ${isTrueFalseCorrect ? 'bg-green-100' : 'bg-red-100'}`}>
+                        <p className="font-bold mb-2">
+                          {isTrueFalseCorrect ? '正解！' : '不正解...'}
+                        </p>
+                        <p dangerouslySetInnerHTML={{ __html: trueFalseQuestions[currentTrueFalseIndex]?.explanation || '' }}></p>
                       </div>
                     )}
+                    
+                    <div className="flex justify-between mt-6">
+                      <div></div> {/* 左側の空白スペース */}
+                      {isTrueFalseAnswered && (
+                        <button
+                          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg"
+                          onClick={handleNextTrueFalseQuestion}
+                        >
+                          {currentTrueFalseIndex < trueFalseQuestions.length - 1 ? '次の問題へ' : '結果を見る'}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-xl text-gray-600">正誤問題の生成に失敗しました。</p>
+                    <button 
+                      className="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+                      onClick={() => toggleTrueFalseMode()}
+                    >
+                      4択問題に戻る
+                    </button>
                   </div>
                 )}
               </div>
-            ) : (
-              // 一問一答モード（フラッシュカード）
-              <div
-                className={`w-full max-w-2xl p-6 md:p-8 cursor-pointer transition-all duration-300 border rounded-lg shadow-md ${
-                  isFlipped ? 'bg-blue-50' : 'bg-white'
-                }`}
-                onClick={!isFlipped ? flipCard : undefined}
-              >
-                <div className="min-h-[200px] flex items-center justify-center">
-                  {isFlipped ? (
-                    <div>
-                      {currentCard && currentCard.back_rich ? (
-                        <div dangerouslySetInnerHTML={{ __html: currentCard.back_rich }} />
-                      ) : (
-                        <p className="text-lg text-center">{currentCard?.back}</p>
+            ) : isChoicesGenerated ? (
+              // 4択問題または一問一答モード
+              <div className="max-w-2xl mx-auto">
+                {/* カード番号と進捗 */}
+                <div className="mb-4 text-center">
+                  <p className="text-gray-600">カード {currentCardIndex + 1} / {cards?.length || 0}</p>
+                </div>
+                
+                {/* カード */}
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                  {sessionInfo?.mode === 'quiz' ? (
+                    // クイズモード
+                    <>
+                      <div className="mb-6">
+                        <h2 className="text-xl font-bold mb-2">問題</h2>
+                        <p className="text-lg">{cards[currentCardIndex]?.front}</p>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {choices && choices.length > 0 && choices.map((choice) => (
+                          <button
+                            key={choice.id}
+                            className={`w-full text-left p-3 rounded-lg border ${
+                              isAnswered && selectedChoice === choice.id
+                                ? choice.isCorrect
+                                  ? 'bg-green-100 border-green-500'
+                                  : 'bg-red-100 border-red-500'
+                                : isAnswered && choice.isCorrect
+                                ? 'bg-green-100 border-green-500'
+                                : 'bg-white border-gray-300 hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleChoiceSelect(choice.id)}
+                            disabled={isAnswered}
+                          >
+                            <span className="font-bold mr-2">{choice.id}.</span>
+                            {choice.text}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      {isAnswered && (
+                        <div className={`mt-6 p-4 rounded-lg mb-6 ${isCorrect ? 'bg-green-100' : 'bg-red-100'}`}>
+                          <p className="font-bold mb-2">
+                            {isCorrect ? '正解！' : '不正解...'}
+                          </p>
+                          <p dangerouslySetInnerHTML={{ __html: cards[currentCardIndex]?.back || '' }}></p>
+                        </div>
                       )}
-                    </div>
+                    </>
                   ) : (
-                    <div>
-                      {currentCard && currentCard.front_rich ? (
-                        <div dangerouslySetInnerHTML={{ __html: currentCard.front_rich }} />
-                      ) : (
-                        <p className="text-lg text-center">{currentCard?.front}</p>
-                      )}
+                    // 一問一答モード
+                    <div 
+                      className={`min-h-[200px] flex items-center justify-center cursor-pointer ${
+                        isFlipped ? 'bg-blue-50' : 'bg-white'
+                      }`}
+                      onClick={handleFlip}
+                    >
+                      <div className="text-center p-4">
+                        <p className="text-xl font-bold mb-2">
+                          {isFlipped ? '答え' : '問題'}
+                        </p>
+                        <p className="text-lg">
+                          {isFlipped ? cards[currentCardIndex]?.back : cards[currentCardIndex]?.front}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
-                <div className="text-center mt-4 text-sm text-gray-500">
-                  {isFlipped ? '答え' : '問題 (タップでめくる)'}
-                </div>
                 
-                {/* フラッシュカードモードで裏面表示時の評価ボタン */}
-                {isFlipped && sessionInfo?.mode === 'flashcard' && (
-                  <div className="flex flex-row gap-2 w-full max-w-2xl justify-center mt-6">
+                {/* 操作ボタン */}
+                <div className="flex justify-between">
+                  <button
+                    className={`bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded ${
+                      currentCardIndex === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-400"
+                    }`}
+                    onClick={handlePrevCard}
+                    disabled={currentCardIndex === 0}
+                  >
+                    前へ
+                  </button>
+                  
+                  {sessionInfo?.mode === 'flashcard' && isFlipped && !isAnswered && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+                        onClick={() => handleAnswer('veryEasy')}
+                      >
+                        超簡単
+                      </button>
+                      <button
+                        className="bg-green-400 hover:bg-green-500 text-white font-bold py-2 px-4 rounded"
+                        onClick={() => handleAnswer('easy')}
+                      >
+                        容易
+                      </button>
+                      <button
+                        className="bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 px-4 rounded"
+                        onClick={() => handleAnswer('difficult')}
+                      >
+                        難しい
+                      </button>
+                      <button
+                        className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
+                        onClick={() => handleAnswer('forgotten')}
+                      >
+                        忘却
+                      </button>
+                    </div>
+                  )}
+                  
+                  {(isAnswered || sessionInfo?.mode === 'flashcard') && (
                     <button
-                      className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center justify-center text-sm flex-1"
-                      onClick={markAsUltraEasy}
-                      disabled={isSubmitting}
+                      className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+                      onClick={handleNextCard}
                     >
-                      <span className="mr-1">⭐10点</span>
-                      超簡単
+                      {currentCardIndex < (cards?.length ?? 0) - 1 ? '次へ' : '終了'}
                     </button>
-                    <button
-                      className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center text-sm flex-1"
-                      onClick={markAsEasy}
-                      disabled={isSubmitting}
-                    >
-                      <span className="mr-1">✓4点</span>
-                      容易
-                    </button>
-                    <button
-                      className="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center justify-center text-sm flex-1"
-                      onClick={markAsHard}
-                      disabled={isSubmitting}
-                    >
-                      <span className="mr-1">▲4日</span>
-                      難しい
-                    </button>
-                    <button
-                      className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center justify-center text-sm flex-1"
-                      onClick={markAsForgot}
-                      disabled={isSubmitting}
-                    >
-                      <span className="mr-1">✕10分</span>
-                      忘却
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <h3 className="text-xl font-bold mb-2">4択問題を生成中</h3>
+                <p className="text-gray-600">AIが問題の選択肢を作成しています。少々お待ちください...</p>
               </div>
             )}
           </div>
-
-          {/* コントロールボタン */}
-          <div className="flex flex-col md:flex-row justify-center gap-4 mb-8 container mx-auto px-4">
-            {/* 表面表示時のコントロール */}
-            {!isFlipped && sessionInfo?.mode === 'flashcard' && (
-              <button 
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center"
-                onClick={flipCard}
-              >
-                <span className="mr-2">↻</span>
-                答えを見る
-              </button>
-            )}
-          </div>
-
-          {/* ナビゲーションボタン */}
-          <div className="flex justify-between max-w-md mx-auto w-full container px-4">
-            <button
-              className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={prevCard}
-              disabled={currentCardIndex === 0}
-            >
-              <span className="mr-1">←</span>
-              前へ
-            </button>
-            <button
-              className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center"
-              onClick={nextCard}
-            >
-              {currentCardIndex < cards.length - 1 ? (
-                <>
-                  次へ
-                  <span className="ml-1">→</span>
-                </>
-              ) : (
-                '完了'
-              )}
-            </button>
-          </div>
-        </>
+        </div>
       )}
+      
+      {/* 結果ポップアップ */}
       {showResultPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-fade-in">
-            <h2 className="text-2xl font-bold text-center mb-6">
-              {sessionInfo?.mode === 'quiz' ? 'クイズ結果' : '学習結果'}
+            <h2 className="text-2xl font-bold mb-4 text-center">
+              {sessionInfo?.mode === 'quiz' ? 'クイズ完了！' : '学習完了！'}
             </h2>
-            
             <div className="bg-blue-50 rounded-lg p-4 mb-6">
               {sessionInfo?.mode === 'quiz' ? (
                 <>
                   <div className="text-center">
                     <div className="text-4xl font-bold text-blue-600 mb-2">
-                      {Math.round((results.correct / (results.correct + results.incorrect)) * 100)}%
+                      {Math.round((results.correct / (results.correct + results.incorrect)) * 100) || 0}%
                     </div>
-                    <p className="text-gray-700">正答率</p>
+                    <p>正答率</p>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4 mt-4">
@@ -1075,19 +1150,19 @@ export default function StudySessionPage({ params }: { params: { id: string } })
                 <>
                   <div className="text-center">
                     <div className="text-4xl font-bold text-blue-600 mb-2">
-                      {cards.length}
+                      {Math.round((results.correct / (results.correct + results.incorrect)) * 100) || 0}%
                     </div>
-                    <p className="text-gray-700">学習したカード</p>
+                    <p>正答率</p>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4 mt-4">
                     <div className="bg-green-100 p-3 rounded text-center">
                       <div className="font-semibold text-green-700">{results.correct}</div>
-                      <div className="text-sm text-green-600">簡単</div>
+                      <div className="text-sm text-green-600">覚えている</div>
                     </div>
                     <div className="bg-red-100 p-3 rounded text-center">
                       <div className="font-semibold text-red-700">{results.incorrect}</div>
-                      <div className="text-sm text-red-600">難しい</div>
+                      <div className="text-sm text-red-600">復習が必要</div>
                     </div>
                   </div>
                 </>
@@ -1095,40 +1170,36 @@ export default function StudySessionPage({ params }: { params: { id: string } })
             </div>
             
             <div className="flex flex-col space-y-3">
-              <button 
+              <button
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded"
                 onClick={() => {
-                  // 最初のカードに戻ってやり直す
-                  setCurrentCardIndex(0);
-                  setIsFlipped(false);
-                  setSelectedChoice(null);
-                  setIsAnswered(false);
-                  setIsCorrect(null);
                   setShowResultPopup(false);
-                  // 結果をリセット
-                  setResults({ correct: 0, incorrect: 0 });
+                  router.push('/flashcards');
                 }}
-                className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
-                もう一度挑戦する
-              </button>
-              
-              <button 
-                onClick={() => router.push('/decks')}
-                className="py-2 px-4 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
               >
                 デッキ一覧に戻る
               </button>
-              
-              <button 
-                onClick={() => router.push('/')}
-                className="py-2 px-4 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
+              <button
+                className="bg-white hover:bg-gray-100 text-blue-500 font-bold py-3 px-4 rounded border border-blue-500"
+                onClick={() => {
+                  setShowResultPopup(false);
+                  setCurrentCardIndex(0);
+                  setIsFlipped(false);
+                  setIsAnswered(false);
+                  setSelectedChoice(null);
+                  setResults({ correct: 0, incorrect: 0 });
+                  setProgress(0);
+                }}
               >
-                ホーム画面に戻る
+                もう一度学習する
               </button>
             </div>
           </div>
         </div>
       )}
+      
+      {/* APIエラーポップアップ */}
+      <ApiErrorPopup />
     </div>
   );
-}
+};
